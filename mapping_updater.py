@@ -60,6 +60,7 @@ HTML = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Connector JSON Mapping Updater</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⇄</text></svg>">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600&display=swap');
 
@@ -302,8 +303,11 @@ HTML = """<!DOCTYPE html>
 <div class="container">
 
   <header>
-    <div class="badge">connector tool</div>
-    <h1>Connector JSON Mapping Updater</h1>
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div class="badge">connector tool</div>
+      <div class="badge" style="color:var(--muted);background:rgba(255,255,255,0.04);border-color:var(--border)">v2.0</div>
+    </div>
+    <h1>⇄ Connector JSON Mapping Updater</h1>
     <p class="subtitle">Upload a connector JSON, then paste your key→value columns copied from Excel.<br>The tool replaces the mapping inside config — nothing else changes.</p>
   </header>
 
