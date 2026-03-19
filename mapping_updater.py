@@ -6,56 +6,52 @@ Runs on http://localhost:8081
 """
 
 import json
-import csv
 import io
+import re
 import copy
 from http.server import HTTPServer, BaseHTTPRequestHandler
-
-try:
-    import openpyxl
-    HAS_OPENPYXL = True
-except ImportError:
-    HAS_OPENPYXL = False
 
 
 def parse_multipart(body: bytes, content_type: str) -> dict:
     """Parse multipart/form-data body (no external deps).
     Returns {field_name: (filename_or_None, bytes)}."""
-    boundary = None
-    for part in content_type.split(";"):
-        part = part.strip()
-        if part.lower().startswith("boundary="):
-            boundary = part[9:].strip('"')
-            break
-    if not boundary:
+    boundary_match = re.search(r'boundary=(?:"([^"]+)"|([^;\s]+))', content_type)
+    if not boundary_match:
         raise ValueError("Missing boundary in Content-Type header")
 
-    sep = ("--" + boundary).encode()
+    boundary = boundary_match.group(1) or boundary_match.group(2)
+    boundary_bytes = ("--" + boundary).encode("utf-8")
+
     fields = {}
-    for chunk in body.split(sep)[1:]:          # skip preamble
-        if chunk.lstrip(b"\r\n").startswith(b"--"):  # final --boundary--
-            break
-        if chunk.startswith(b"\r\n"):
-            chunk = chunk[2:]
-        if chunk.endswith(b"\r\n"):
-            chunk = chunk[:-2]
-        hdr_end = chunk.find(b"\r\n\r\n")
-        if hdr_end == -1:
+    parts = body.split(boundary_bytes)
+
+    for part in parts:
+        part = part.strip(b"\r\n")
+        if not part or part == b"--":
             continue
-        raw_headers = chunk[:hdr_end].decode("utf-8", errors="replace")
-        data = chunk[hdr_end + 4:]
+        if part.endswith(b"--"):
+            part = part[:-2].rstrip(b"\r\n")
+
+        headers_blob, sep, data = part.partition(b"\r\n\r\n")
+        if not sep:
+            continue
+
+        headers_text = headers_blob.decode("utf-8", errors="replace")
+        data = data.rstrip(b"\r\n")
 
         name = filename = None
-        for line in raw_headers.splitlines():
-            if line.lower().startswith("content-disposition"):
-                for item in line.split(";"):
-                    item = item.strip()
-                    if item.startswith("name="):
-                        name = item[5:].strip('"')
-                    elif item.startswith("filename="):
-                        filename = item[9:].strip('"')
+        for line in headers_text.split("\r\n"):
+            if line.lower().startswith("content-disposition:"):
+                name_match = re.search(r'name="([^"]+)"', line)
+                file_match = re.search(r'filename="([^"]*)"', line)
+                if name_match:
+                    name = name_match.group(1)
+                if file_match:
+                    filename = file_match.group(1)
+
         if name:
             fields[name] = (filename, data)
+
     return fields
 
 HTML = """<!DOCTYPE html>
@@ -63,7 +59,7 @@ HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>JSON Mapping Updater</title>
+<title>Connector JSON Mapping Updater</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600&display=swap');
 
@@ -164,6 +160,34 @@ HTML = """<!DOCTYPE html>
   }
   .file-selected.show { display: flex; }
 
+  .detected-table {
+    display: none; align-items: center; gap: 8px;
+    background: rgba(90,90,114,0.12); border: 1px solid var(--border-hover);
+    border-radius: 8px; padding: 10px 16px; margin-top: 12px;
+    font-family: var(--mono); font-size: 12px;
+  }
+  .detected-table.show { display: flex; }
+  .detected-label { color: var(--muted); }
+  .detected-value { color: var(--accent); font-weight: 600; margin-left: 4px; }
+
+  .replace-section {
+    display: none; margin-top: 16px; padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+  .replace-section.show { display: block; }
+  .checkbox-row { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+  .checkbox-row input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+  .checkbox-label { font-size: 13px; color: var(--text); }
+  .new-table-input { display: none; margin-top: 14px; }
+  .new-table-input.show { display: block; }
+  .text-input {
+    width: 100%; background: var(--bg); border: 1.5px solid var(--border);
+    border-radius: 8px; padding: 11px 14px; font-family: var(--mono);
+    font-size: 13px; color: var(--text); outline: none; transition: border-color 0.2s;
+  }
+  .text-input:focus { border-color: var(--accent); }
+  .text-input::placeholder { color: var(--muted); }
+
   .btn-submit {
     width: 100%;
     background: var(--accent);
@@ -224,6 +248,21 @@ HTML = """<!DOCTYPE html>
   .step-num { font-family: var(--mono); font-size: 20px; font-weight: 700; color: var(--border-hover); margin-bottom: 4px; }
   .step-text { font-size: 12px; color: var(--muted); line-height: 1.5; }
   .step-text strong { color: var(--text); }
+
+  .paste-area {
+    width: 100%; min-height: 160px; resize: vertical;
+    background: var(--bg); border: 1.5px solid var(--border);
+    border-radius: 8px; padding: 14px 16px;
+    font-family: var(--mono); font-size: 12px; color: var(--text);
+    outline: none; transition: border-color 0.2s; line-height: 1.7;
+  }
+  .paste-area:focus { border-color: var(--accent); }
+  .paste-area::placeholder { color: var(--muted); }
+  .pair-count {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    margin-top: 8px; text-align: right;
+  }
+  .pair-count.has-data { color: var(--green); }
 </style>
 </head>
 <body>
@@ -231,8 +270,8 @@ HTML = """<!DOCTYPE html>
 
   <header>
     <div class="badge">connector tool</div>
-    <h1>JSON Mapping Updater</h1>
-    <p class="subtitle">Upload a connector JSON and a key→value file.<br>The tool replaces the mapping inside config — nothing else changes.</p>
+    <h1>Connector JSON Mapping Updater</h1>
+    <p class="subtitle">Upload a connector JSON, then paste your key→value columns copied from Excel.<br>The tool replaces the mapping inside config — nothing else changes.</p>
   </header>
 
   {alert_html}
@@ -254,23 +293,40 @@ HTML = """<!DOCTYPE html>
         <div class="drop-ext">.json</div>
       </div>
       <div class="file-selected" id="jsonSelected">✓ <span id="jsonName"></span></div>
+      <div class="detected-table" id="detectedTableWrap">
+        <span class="detected-label">Detected table →</span>
+        <span class="detected-value" id="detectedTableVal"></span>
+      </div>
+      <div class="replace-section" id="replaceTableSection">
+        <label class="checkbox-row">
+          <input type="checkbox" id="replaceTableCheck" name="replace_table" value="1">
+          <span class="checkbox-label">Replace table name in output</span>
+        </label>
+        <input type="hidden" name="detected_table" id="detectedTableInput" value="">
+        <div class="new-table-input" id="newTableWrap">
+          <input type="text" name="new_table" id="newTableInput" class="text-input"
+                 placeholder="New table name…" autocomplete="off">
+        </div>
+      </div>
     </div>
 
     <div class="card">
       <div class="card-header">
         <div class="card-icon icon-csv">⇄</div>
         <div>
-          <div class="card-title">Key → Value Mapping File</div>
-          <div class="card-desc">Two-column file: first column = key, second column = value (e.g. {{.plant}})</div>
+          <div class="card-title">Key → Value Mapping</div>
+          <div class="card-desc">Select the two columns in Excel (key + value), copy, and paste below</div>
         </div>
       </div>
-      <div class="drop-zone" id="csvZone">
-        <input type="file" name="mapping_file" id="mappingFile" accept=".csv,.xlsx,.xls,.tsv,.txt" required>
-        <div class="drop-icon">⇄</div>
-        <div class="drop-label">Drop mapping file or <span>browse</span></div>
-        <div class="drop-ext">.csv · .xlsx · .tsv · .txt</div>
-      </div>
-      <div class="file-selected" id="csvSelected">✓ <span id="csvName"></span></div>
+      <textarea
+        name="mapping_text"
+        id="mappingText"
+        class="paste-area"
+        placeholder="Paste your Excel cells here…&#10;&#10;plant&#9;{{.plant}}&#10;material&#9;{{.material}}&#10;movetype&#9;{{.movetype}}"
+        spellcheck="false"
+      ></textarea>
+      <div class="pair-count" id="pairCount"></div>
+      <div class="mapping-preview" id="mappingPreview" style="display:none"></div>
     </div>
 
     <button type="submit" class="btn-submit" id="submitBtn" disabled>
@@ -283,11 +339,11 @@ HTML = """<!DOCTYPE html>
     <div class="steps">
       <div class="step">
         <div class="step-num">01</div>
-        <div class="step-text"><strong>Upload</strong> your connector JSON (any structure)</div>
+        <div class="step-text"><strong>Upload</strong> your connector JSON</div>
       </div>
       <div class="step">
         <div class="step-num">02</div>
-        <div class="step-text"><strong>Upload</strong> CSV/Excel with key-value columns</div>
+        <div class="step-text"><strong>Copy</strong> two columns from Excel and <strong>paste</strong> into the mapping area</div>
       </div>
       <div class="step">
         <div class="step-num">03</div>
@@ -299,73 +355,154 @@ HTML = """<!DOCTYPE html>
 </div>
 
 <script>
-  const jsonFile = document.getElementById('jsonFile');
-  const mappingFile = document.getElementById('mappingFile');
-  const submitBtn = document.getElementById('submitBtn');
+  const jsonFile   = document.getElementById('jsonFile');
+  const jsonZone   = document.getElementById('jsonZone');
+  const mappingText = document.getElementById('mappingText');
+  const submitBtn  = document.getElementById('submitBtn');
 
   function checkReady() {
-    submitBtn.disabled = !(jsonFile.files.length && mappingFile.files.length);
+    submitBtn.disabled = !(jsonFile.files.length && mappingText.value.trim().length > 0);
   }
 
+  // ── JSON upload: show filename + detect table name ──────────────────────
   jsonFile.addEventListener('change', () => {
     if (jsonFile.files.length) {
       document.getElementById('jsonSelected').classList.add('show');
       document.getElementById('jsonName').textContent = jsonFile.files[0].name;
+      // Hide drop zone text, show as "loaded"
+      jsonZone.querySelector('.drop-icon').textContent = '✓';
+      jsonZone.querySelector('.drop-label').innerHTML = 'File loaded: <span>' + jsonFile.files[0].name + '</span>';
+      jsonZone.querySelector('.drop-ext').textContent = '';
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const wrap = document.getElementById('detectedTableWrap');
+        const sec  = document.getElementById('replaceTableSection');
+        try {
+          const parsed = JSON.parse(e.target.result);
+          const tbl = findTableInJson(parsed);
+          if (tbl) {
+            document.getElementById('detectedTableVal').textContent = tbl;
+            document.getElementById('detectedTableInput').value = tbl;
+            wrap.classList.add('show');
+            sec.classList.add('show');
+          } else {
+            wrap.classList.remove('show');
+            sec.classList.remove('show');
+          }
+        } catch(err) {
+          console.error('JSON parse error:', err);
+          wrap.classList.remove('show');
+          sec.classList.remove('show');
+        }
+      };
+      reader.onerror = () => console.error('FileReader error');
+      reader.readAsText(jsonFile.files[0]);
     }
     checkReady();
   });
 
-  mappingFile.addEventListener('change', () => {
-    if (mappingFile.files.length) {
-      document.getElementById('csvSelected').classList.add('show');
-      document.getElementById('csvName').textContent = mappingFile.files[0].name;
-    }
+  // ── Paste area: live preview ─────────────────────────────────────────────
+  mappingText.addEventListener('input', () => {
+    updatePreview();
     checkReady();
   });
 
-  // Drag and drop visual
-  ['jsonZone','csvZone'].forEach(id => {
-    const zone = document.getElementById(id);
-    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
-    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
-    zone.addEventListener('drop', () => zone.classList.remove('dragover'));
+  function parsePasted(text) {
+    const pairs = [];
+    for (const line of text.split(/\\r?\\n/)) {
+      const delim = line.includes('\\t') ? '\\t' : ',';
+      const idx = line.indexOf(delim);
+      if (idx === -1) continue;
+      const k = line.slice(0, idx).trim();
+      const v = line.slice(idx + 1).trim();
+      if (!k || ['key','keys','value','values'].includes(k.toLowerCase())) continue;
+      pairs.push([k, v]);
+    }
+    return pairs;
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function updatePreview() {
+    const preview  = document.getElementById('mappingPreview');
+    const counter  = document.getElementById('pairCount');
+    const pairs    = parsePasted(mappingText.value);
+    if (!pairs.length) {
+      preview.style.display = 'none';
+      counter.textContent = '';
+      counter.className = 'pair-count';
+      return;
+    }
+    counter.textContent = pairs.length + ' pair' + (pairs.length !== 1 ? 's' : '') + ' detected';
+    counter.className = 'pair-count has-data';
+    preview.style.display = 'block';
+    preview.innerHTML = pairs.map(([k, v]) =>
+      `<div class="kv"><span class="k">${escHtml(k)}</span>` +
+      `<span class="arrow">→</span><span class="v">${escHtml(v)}</span></div>`
+    ).join('');
+  }
+
+  // ── Drag and drop (JSON zone only) ───────────────────────────────────────
+  jsonZone.addEventListener('dragover', e => { e.preventDefault(); jsonZone.classList.add('dragover'); });
+  jsonZone.addEventListener('dragleave', () => jsonZone.classList.remove('dragover'));
+  jsonZone.addEventListener('drop', e => {
+    e.preventDefault();
+    jsonZone.classList.remove('dragover');
+    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!file) return;
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    jsonFile.files = dt.files;
+    handleJsonFile(file);
   });
+
+  // ── Table replace toggle ─────────────────────────────────────────────────
+  document.getElementById('replaceTableCheck').addEventListener('change', function() {
+    document.getElementById('newTableWrap').classList.toggle('show', this.checked);
+    if (!this.checked) document.getElementById('newTableInput').value = '';
+  });
+
+  // ── Walk parsed JSON to find first "table" inside a config string ─────────
+  function findTableInJson(obj) {
+    if (Array.isArray(obj)) {
+      for (const item of obj) { const r = findTableInJson(item); if (r) return r; }
+    } else if (obj && typeof obj === 'object') {
+      for (const [k, v] of Object.entries(obj)) {
+        if (typeof v === 'string') {
+          // Try to parse as embedded JSON string (e.g. the "config" field)
+          try {
+            const inner = JSON.parse(v);
+            if (inner && typeof inner === 'object' && inner.table)
+              return String(inner.table);
+          } catch(_) {}
+        } else if (v && typeof v === 'object') {
+          // Recurse into nested objects/arrays
+          const r = findTableInJson(v); if (r) return r;
+        }
+      }
+    }
+    return null;
+  }
 </script>
 </body>
 </html>
 """
 
 
-def parse_mapping_csv(data: bytes, filename: str) -> dict:
-    """Parse CSV, TSV, TXT, or XLSX into a key→value dict."""
-    ext = filename.rsplit(".", 1)[-1].lower()
-
-    if ext in ("xlsx", "xls"):
-        if not HAS_OPENPYXL:
-            raise ValueError("openpyxl not installed. Run: pip install openpyxl")
-        wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
-        ws = wb.active
-        mapping = {}
-        for row in ws.iter_rows(values_only=True):
-            if row[0] is not None and len(row) >= 2 and row[1] is not None:
-                k = str(row[0]).strip()
-                v = str(row[1]).strip()
-                if k and k.lower() not in ("key", "keys"):
-                    mapping[k] = v
-        return mapping
-
-    # CSV / TSV / TXT
-    text = data.decode("utf-8-sig", errors="replace")
-    # Auto-detect delimiter
-    delimiter = "\t" if "\t" in text.split("\n")[0] else ","
-    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+def parse_mapping_text(text: str) -> dict:
+    """Parse tab- or comma-separated key→value text pasted from Excel/CSV."""
+    skip = {"key", "keys", "value", "values"}
     mapping = {}
-    for i, row in enumerate(reader):
-        if len(row) < 2:
+    for line in text.splitlines():
+        delim = "\t" if "\t" in line else ","
+        idx = line.find(delim)
+        if idx == -1:
             continue
-        k = row[0].strip()
-        v = row[1].strip()
-        if not k or k.lower() in ("key", "keys"):
+        k = line[:idx].strip()
+        v = line[idx + 1:].strip()
+        if not k or k.lower() in skip:
             continue
         mapping[k] = v
     return mapping
@@ -399,7 +536,10 @@ def replace_mapping_in_json(obj, new_mapping: dict):
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        print(f"  {self.address_string()} → {args[0]}")
+        try:
+            print(f"  {self.address_string()} \u2192 {format % args}")
+        except Exception:
+            print(f"  {self.address_string()} \u2192 {format}")
 
     def send_html(self, html: str, status=200):
         body = html.encode("utf-8")
@@ -432,13 +572,9 @@ class Handler(BaseHTTPRequestHandler):
 
             if "json_file" not in fields:
                 raise ValueError("No JSON file received. Please upload a connector JSON.")
-            if "mapping_file" not in fields:
-                raise ValueError("No mapping file received. Please upload a CSV or Excel file.")
 
-            # Read uploaded files
+            # Read uploaded JSON
             _, json_data = fields["json_file"]
-            mapping_filename, mapping_data = fields["mapping_file"]
-            mapping_filename = mapping_filename or "mapping.csv"
 
             # Parse JSON
             try:
@@ -446,14 +582,30 @@ class Handler(BaseHTTPRequestHandler):
             except json.JSONDecodeError as e:
                 raise ValueError(f"Invalid JSON file: {e}")
 
+            # Read pasted mapping text
+            _, mapping_text_b = fields.get("mapping_text", (None, b""))
+            mapping_text = mapping_text_b.decode("utf-8", errors="replace")
+
             # Parse mapping
-            new_mapping = parse_mapping_csv(mapping_data, mapping_filename)
+            new_mapping = parse_mapping_text(mapping_text)
             if not new_mapping:
-                raise ValueError("No key-value pairs found in mapping file. Make sure it has two columns: key and value.")
+                raise ValueError("No key-value pairs found. Copy exactly two columns from Excel (key column + value column) and paste into the mapping area.")
 
             # Apply mapping
             updated = replace_mapping_in_json(copy.deepcopy(connector), new_mapping)
-            output_bytes = json.dumps(updated, indent=2, ensure_ascii=False).encode("utf-8")
+            output_str = json.dumps(updated, indent=2, ensure_ascii=False)
+
+            # Optional: replace table name everywhere in the serialized output
+            _, replace_flag = fields.get("replace_table", (None, b""))
+            if replace_flag.decode("utf-8", errors="replace").strip() == "1":
+                _, old_tbl_b = fields.get("detected_table", (None, b""))
+                _, new_tbl_b = fields.get("new_table",      (None, b""))
+                old_tbl = old_tbl_b.decode("utf-8", errors="replace").strip()
+                new_tbl = new_tbl_b.decode("utf-8", errors="replace").strip()
+                if old_tbl and new_tbl and old_tbl != new_tbl:
+                    output_str = output_str.replace(old_tbl, new_tbl)
+
+            output_bytes = output_str.encode("utf-8")
 
             # Send file download
             self.send_response(200)
@@ -473,22 +625,14 @@ def main():
     server = HTTPServer(("0.0.0.0", port), Handler)
     print(f"""
 ╔══════════════════════════════════════════════╗
-║       JSON Mapping Updater — Ready           ║
+║       Connector JSON Mapping Updater — Ready           ║
 ╠══════════════════════════════════════════════╣
 ║  Open:  http://localhost:{port}                 ║
 ║  Stop:  Ctrl+C                               ║
 ╚══════════════════════════════════════════════╝
 
-  Supports:
-    JSON  → any connector structure
-    CSV   → comma-separated (key,value)
-    TSV   → tab-separated (key  value)
-    XLSX  → Excel (key in col A, value in col B)
+  Upload JSON → Paste mapping from Excel → Download updated JSON
 """)
-
-    if not HAS_OPENPYXL:
-        print("  ⚠  openpyxl not found — Excel (.xlsx) upload disabled.")
-        print("     Install with:  pip install openpyxl\n")
 
     try:
         server.serve_forever()
