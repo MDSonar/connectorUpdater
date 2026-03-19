@@ -9,6 +9,10 @@ import json
 import io
 import re
 import copy
+import ssl
+import base64
+import urllib.request
+import urllib.error
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 
@@ -297,6 +301,70 @@ HTML = """<!DOCTYPE html>
   .tab-add:hover { border-color: var(--accent); color: var(--accent); }
   .tab-pane { display: none; }
   .tab-pane.active { display: block; }
+
+  /* ── Mode Toggle ───────────────────────────────────────── */
+  .mode-bar {
+    display: flex; align-items: center; justify-content: center; gap: 14px;
+    margin-bottom: 24px; padding: 14px 0;
+  }
+  .mode-label {
+    font-family: var(--mono); font-size: 12px; font-weight: 600;
+    letter-spacing: 0.5px; transition: color 0.2s;
+  }
+  .mode-label.active { color: var(--accent); }
+  .mode-label.inactive { color: var(--muted); }
+  .toggle-track {
+    width: 48px; height: 26px; border-radius: 13px;
+    background: var(--border-hover); cursor: pointer;
+    position: relative; transition: background 0.25s;
+    border: 1px solid var(--border);
+  }
+  .toggle-track.le-active { background: var(--accent-dim); border-color: rgba(245,200,66,0.35); }
+  .toggle-knob {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: #fff; position: absolute; top: 2px; left: 3px;
+    transition: transform 0.25s; box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  }
+  .toggle-track.le-active .toggle-knob { transform: translateX(22px); }
+
+  /* ── LE Panel ─────────────────────────────────────────── */
+  .le-panel { display: none; }
+  .le-panel.show { display: block; }
+  .le-connect-row {
+    display: flex; gap: 10px; align-items: center;
+  }
+  .le-connect-row .text-input { flex: 1; }
+  .btn-connect {
+    background: var(--accent); color: #000; border: none;
+    border-radius: 8px; padding: 11px 20px;
+    font-family: var(--sans); font-size: 13px; font-weight: 700;
+    cursor: pointer; white-space: nowrap; transition: all 0.2s;
+  }
+  .btn-connect:hover { background: #ffd84d; }
+  .btn-connect:disabled { opacity: 0.4; cursor: not-allowed; }
+  .le-status {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    margin-top: 10px;
+  }
+  .le-status.error { color: var(--red); }
+  .le-status.success { color: var(--green); }
+  .instance-list {
+    margin-top: 16px; display: flex; flex-direction: column; gap: 6px;
+    max-height: 280px; overflow-y: auto;
+  }
+  .instance-item {
+    background: var(--bg); border: 1.5px solid var(--border);
+    border-radius: 8px; padding: 10px 16px; cursor: pointer;
+    font-family: var(--mono); font-size: 12px; color: var(--text);
+    transition: border-color 0.15s, background 0.15s;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .instance-item:hover { border-color: var(--border-hover); background: var(--surface); }
+  .instance-item.selected { border-color: var(--accent); background: var(--accent-dim); }
+  .instance-item .inst-icon { color: var(--muted); font-size: 14px; flex-shrink: 0; }
+  .instance-item.selected .inst-icon { color: var(--accent); }
+  .instance-item .inst-table { color: var(--accent); font-weight: 600; }
+  .instance-item .inst-provider { color: var(--muted); font-size: 10px; margin-left: auto; }
 </style>
 </head>
 <body>
@@ -313,10 +381,19 @@ HTML = """<!DOCTYPE html>
 
   {alert_html}
 
+  <!-- ── Mode Toggle ──────────────────────────────────────── -->
+  <div class="mode-bar">
+    <span class="mode-label active" id="labelManual">Manual</span>
+    <div class="toggle-track" id="modeToggle" title="Switch mode">
+      <div class="toggle-knob"></div>
+    </div>
+    <span class="mode-label inactive" id="labelLE">Litmus Edge</span>
+  </div>
+
   <form method="POST" action="/update" enctype="multipart/form-data" id="mainForm">
 
-    <!-- ── JSON Upload Card (shared template) ──────────────────── -->
-    <div class="card">
+    <!-- ── Manual Mode: JSON Upload Card ───────────────────────── -->
+    <div class="card" id="manualCard">
       <div class="card-header">
         <div class="card-icon icon-json">📄</div>
         <div>
@@ -325,7 +402,7 @@ HTML = """<!DOCTYPE html>
         </div>
       </div>
       <div class="drop-zone" id="jsonZone">
-        <input type="file" name="json_file" id="jsonFile" accept=".json" required>
+        <input type="file" name="json_file" id="jsonFile" accept=".json">
         <div class="drop-icon">{ }</div>
         <div class="drop-label">Drop JSON file or <span>browse</span></div>
         <div class="drop-ext">.json</div>
@@ -336,6 +413,26 @@ HTML = """<!DOCTYPE html>
         <span class="detected-value" id="detectedTableVal"></span>
       </div>
     </div>
+
+    <!-- ── Litmus Edge Mode: Connection Panel ──────────────────── -->
+    <div class="card le-panel" id="leCard">
+      <div class="card-header">
+        <div class="card-icon icon-json" style="background:rgba(245,200,66,0.15)">🔗</div>
+        <div>
+          <div class="card-title">Connect to Litmus Edge</div>
+          <div class="card-desc">Enter the IP and API token of your Litmus Edge device</div>
+        </div>
+      </div>
+      <div class="le-connect-row">
+        <input type="text" id="leIpInput" class="text-input" placeholder="e.g. 192.168.1.100" autocomplete="off" style="flex:2">
+        <input type="text" id="leTokenInput" class="text-input" placeholder="API token" autocomplete="off" style="flex:3">
+        <button type="button" class="btn-connect" id="leConnectBtn">Connect</button>
+      </div>
+      <div class="le-status" id="leStatus"></div>
+      <div class="instance-list" id="instanceList" style="display:none"></div>
+    </div>
+
+    <input type="hidden" name="le_instance_json" id="leInstanceJson" value="">
 
     <!-- ── Tabbed Mapping Cards ────────────────────────────────── -->
     <div class="card" id="tabCard">
@@ -412,10 +509,112 @@ HTML = """<!DOCTYPE html>
   const submitBtn  = document.getElementById('submitBtn');
   let tabCounter   = 1;   // total tabs ever created (for unique IDs)
   let detectedTable = '';
+  let currentMode  = 'manual';  // 'manual' or 'le'
+  let leInstances  = [];        // fetched instances from LE
+  let selectedInstanceIdx = -1; // which instance is selected
+
+  // ── Mode Toggle ──────────────────────────────────────────────────────────
+  document.getElementById('modeToggle').addEventListener('click', function() {
+    if (currentMode === 'manual') {
+      currentMode = 'le';
+      this.classList.add('le-active');
+      document.getElementById('labelManual').className = 'mode-label inactive';
+      document.getElementById('labelLE').className = 'mode-label active';
+      document.getElementById('manualCard').style.display = 'none';
+      document.getElementById('leCard').classList.add('show');
+    } else {
+      currentMode = 'manual';
+      this.classList.remove('le-active');
+      document.getElementById('labelManual').className = 'mode-label active';
+      document.getElementById('labelLE').className = 'mode-label inactive';
+      document.getElementById('manualCard').style.display = 'block';
+      document.getElementById('leCard').classList.remove('show');
+    }
+    checkReady();
+  });
+
+  // ── Litmus Edge: Connect + fetch instances ───────────────────────────────
+  document.getElementById('leConnectBtn').addEventListener('click', function() {
+    const ip = document.getElementById('leIpInput').value.trim();
+    const token = document.getElementById('leTokenInput').value.trim();
+    if (!ip) { document.getElementById('leStatus').textContent = 'Please enter an IP address'; document.getElementById('leStatus').className = 'le-status error'; return; }
+    if (!token) { document.getElementById('leStatus').textContent = 'Please enter an API token'; document.getElementById('leStatus').className = 'le-status error'; return; }
+    const status = document.getElementById('leStatus');
+    const btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Connecting\u2026';
+    status.textContent = 'Fetching instances from ' + ip + '\u2026';
+    status.className = 'le-status';
+    document.getElementById('instanceList').style.display = 'none';
+
+    fetch('/api/instances?ip=' + encodeURIComponent(ip) + '&token=' + encodeURIComponent(token))
+      .then(r => {
+        if (!r.ok) return r.text().then(t => { throw new Error(t || 'Connection failed'); });
+        return r.json();
+      })
+      .then(data => {
+        leInstances = data;
+        selectedInstanceIdx = -1;
+        document.getElementById('leInstanceJson').value = '';
+        status.textContent = data.length + ' instance' + (data.length !== 1 ? 's' : '') + ' found';
+        status.className = 'le-status success';
+        renderInstanceList(data);
+      })
+      .catch(err => {
+        status.textContent = 'Error: ' + err.message;
+        status.className = 'le-status error';
+        leInstances = [];
+      })
+      .finally(() => { btn.disabled = false; btn.textContent = 'Connect'; });
+  });
+
+  function renderInstanceList(instances) {
+    const list = document.getElementById('instanceList');
+    list.style.display = 'flex';
+    list.innerHTML = '';
+    instances.forEach((inst, i) => {
+      const div = document.createElement('div');
+      div.className = 'instance-item';
+      div.setAttribute('data-idx', i);
+      const tableName = inst._tableName || 'unknown';
+      const provider  = inst.providerId || '';
+      div.innerHTML = '<span class="inst-icon">\u25cb</span>' +
+        '<span class="inst-table">' + escHtml(tableName) + '</span>' +
+        '<span class="inst-provider">' + escHtml(provider) + '</span>';
+      div.addEventListener('click', () => selectInstance(i));
+      list.appendChild(div);
+    });
+  }
+
+  function selectInstance(idx) {
+    selectedInstanceIdx = idx;
+    document.querySelectorAll('.instance-item').forEach((el, i) => {
+      el.classList.toggle('selected', i === idx);
+      el.querySelector('.inst-icon').textContent = (i === idx) ? '\u25cf' : '\u25cb';
+    });
+    const inst = leInstances[idx];
+    // Store the full original instance as JSON for the form
+    document.getElementById('leInstanceJson').value = JSON.stringify(inst._original);
+    // Detect table for replace section
+    const tbl = inst._tableName || '';
+    if (tbl) {
+      detectedTable = tbl;
+      document.getElementById('detectedTableInput').value = tbl;
+      document.querySelectorAll('.replace-section').forEach(s => s.classList.add('show'));
+    }
+    checkReady();
+  }
 
   // ── Check if form is ready to submit ─────────────────────────────────────
   function checkReady() {
-    if (!jsonFile.files.length) { submitBtn.disabled = true; return; }
+    // Source check: manual needs file, LE needs selected instance
+    let hasSource = false;
+    if (currentMode === 'manual') {
+      hasSource = jsonFile.files.length > 0;
+    } else {
+      hasSource = selectedInstanceIdx >= 0;
+    }
+    if (!hasSource) { submitBtn.disabled = true; return; }
     // At least one tab must have pasted mapping data
     const areas = document.querySelectorAll('.mappingArea');
     let anyMapping = false;
@@ -711,9 +910,89 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path in ("/", "/index.html"):
             self.send_html(HTML.replace("{alert_html}", ""))
+        elif self.path.startswith("/api/instances"):
+            self._handle_le_instances()
         else:
             self.send_response(404)
             self.end_headers()
+
+    def _handle_le_instances(self):
+        """Proxy endpoint: fetch connector instances from a Litmus Edge device."""
+        from urllib.parse import urlparse, parse_qs
+        qs = parse_qs(urlparse(self.path).query)
+        ip = qs.get("ip", [""])[0].strip()
+        token = qs.get("token", [""])[0].strip()
+        if not ip:
+            self._send_json_error(400, "Missing 'ip' parameter")
+            return
+        if not token:
+            self._send_json_error(400, "Missing API token")
+            return
+
+        # Basic IP/hostname validation — prevent SSRF to internal services
+        if ip.lower() in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+            self._send_json_error(400, "Cannot connect to localhost")
+            return
+
+        url = f"https://{ip}/cc/instances"
+        try:
+            # LE uses self-signed certs — skip verification for local network
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            req = urllib.request.Request(url, method="GET")
+            req.add_header("Accept", "application/json")
+            # LE 3.16.x Basic Auth: username=API token, password=empty
+            auth_str = base64.b64encode(f"{token}:".encode("utf-8")).decode("ascii")
+            req.add_header("Authorization", f"Basic {auth_str}")
+            with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as e:
+            self._send_json_error(502, f"Litmus Edge returned HTTP {e.code}")
+            return
+        except Exception as e:
+            self._send_json_error(502, f"Cannot reach Litmus Edge at {ip}: {e}")
+            return
+
+        # Parse and extract just table names + provider for the frontend list
+        try:
+            instances = json.loads(raw)
+            if not isinstance(instances, list):
+                instances = [instances]
+        except json.JSONDecodeError:
+            self._send_json_error(502, "Invalid JSON response from Litmus Edge")
+            return
+
+        result = []
+        for inst in instances:
+            table_name = ""
+            cfg_str = inst.get("config", "")
+            if isinstance(cfg_str, str):
+                try:
+                    cfg = json.loads(cfg_str)
+                    table_name = cfg.get("table", "") or cfg.get("name", "")
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            result.append({
+                "_tableName": table_name,
+                "providerId": inst.get("providerId", ""),
+                "_original": inst,
+            })
+
+        out = json.dumps(result, ensure_ascii=False).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+
+    def _send_json_error(self, status, msg):
+        body = json.dumps({"error": msg}).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_POST(self):
         if self.path != "/update":
@@ -729,17 +1008,26 @@ class Handler(BaseHTTPRequestHandler):
             # Parse multipart form data (pure stdlib, works on Python 3.13+)
             fields = parse_multipart(body, content_type)
 
-            if "json_file" not in fields:
-                raise ValueError("No JSON file received. Please upload a connector JSON.")
+            # Determine source: file upload (manual) or LE instance JSON
+            _, le_json_b = fields.get("le_instance_json", (None, b""))
+            le_json_str = le_json_b.decode("utf-8", errors="replace").strip()
 
-            # Read uploaded JSON
-            _, json_data = fields["json_file"]
-
-            # Parse JSON
-            try:
-                connector = json.loads(json_data.decode("utf-8-sig", errors="replace"))
-            except json.JSONDecodeError as e:
-                raise ValueError(f"Invalid JSON file: {e}")
+            if le_json_str:
+                # LE mode: wrap selected instance in cc structure
+                try:
+                    le_instance = json.loads(le_json_str)
+                except json.JSONDecodeError as e:
+                    raise ValueError(f"Invalid LE instance data: {e}")
+                connector = {"cc": {"instances": [le_instance]}}
+            elif "json_file" in fields:
+                # Manual mode: read uploaded file
+                _, json_data = fields["json_file"]
+                try:
+                    connector = json.loads(json_data.decode("utf-8-sig", errors="replace"))
+                except json.JSONDecodeError as e:
+                    raise ValueError(f"Invalid JSON file: {e}")
+            else:
+                raise ValueError("No JSON source. Upload a file or connect to Litmus Edge.")
 
             # Detected table name (shared across tabs)
             _, det_tbl_b = fields.get("detected_table", (None, b""))
