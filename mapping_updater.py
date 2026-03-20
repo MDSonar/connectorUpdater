@@ -401,7 +401,7 @@ HTML = """<!DOCTYPE html>
   <header>
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div class="badge">connector tool</div>
-      <div class="badge" style="color:var(--muted);background:rgba(255,255,255,0.04);border-color:var(--border)">v3.1</div>
+      <div class="badge" style="color:var(--muted);background:rgba(255,255,255,0.04);border-color:var(--border)">v3.2</div>
     </div>
     <h1>⇄ Connector JSON Mapping Updater</h1>
     <p class="subtitle">Upload a connector JSON, then paste your key→value columns copied from Excel.<br>The tool replaces the mapping inside config — nothing else changes.</p>
