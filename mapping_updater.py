@@ -9,6 +9,7 @@ import json
 import io
 import re
 import copy
+import random
 import ssl
 import base64
 import urllib.request
@@ -708,7 +709,7 @@ HTML = """<!DOCTYPE html>
         div.textContent = '\u2717 Request failed: ' + err.message;
         resultsDiv.appendChild(div);
       })
-      .finally(() => { pushBtn.disabled = false; pushBtn.textContent = '🚀 Push to Litmus Edge'; });
+      .finally(() => { pushBtn.disabled = false; pushBtn.textContent = 'Push to Litmus Edge'; });
   });
 
   // ── Check if form is ready to submit ─────────────────────────────────────
@@ -981,9 +982,10 @@ def parse_mapping_text(text: str) -> dict:
     return mapping
 
 
-def replace_mapping_in_json(obj, new_mapping: dict):
+def replace_mapping_in_json(obj, new_mapping: dict, new_table: str = "", new_name: str = ""):
     """Recursively find and replace (or inject) every 'mapping' key in the
-    structure, including inside JSON-encoded 'config' strings."""
+    structure, including inside JSON-encoded 'config' strings.
+    Optionally also replace 'table' and 'name' inside config strings."""
     if isinstance(obj, dict):
         for k, v in obj.items():
             if k == "mapping" and isinstance(v, dict):
@@ -996,14 +998,18 @@ def replace_mapping_in_json(obj, new_mapping: dict):
                     if isinstance(cfg, dict):
                         # Replace or inject the mapping key
                         cfg["mapping"] = new_mapping
+                        if new_table:
+                            cfg["table"] = new_table
+                        if new_name:
+                            cfg["name"] = new_name
                         obj[k] = json.dumps(cfg, ensure_ascii=False)
                 except (json.JSONDecodeError, TypeError):
                     pass
             else:
-                replace_mapping_in_json(v, new_mapping)
+                replace_mapping_in_json(v, new_mapping, new_table, new_name)
     elif isinstance(obj, list):
         for item in obj:
-            replace_mapping_in_json(item, new_mapping)
+            replace_mapping_in_json(item, new_mapping, new_table, new_name)
     return obj
 
 
@@ -1190,19 +1196,32 @@ class Handler(BaseHTTPRequestHandler):
                 if not new_mapping:
                     continue
 
-                inst_copy = copy.deepcopy(template_instance)
-                replace_mapping_in_json(inst_copy, new_mapping)
-
                 _, replace_flag_b = fields.get(f"replace_table_{i}", (None, b""))
                 _, new_tbl_b = fields.get(f"new_table_{i}", (None, b""))
                 replace_flag = replace_flag_b.decode("utf-8", errors="replace").strip()
                 new_tbl = new_tbl_b.decode("utf-8", errors="replace").strip()
 
-                inst_name = new_tbl or detected_table or f"instance_{i+1}"
-                if replace_flag == "1" and detected_table and new_tbl and detected_table != new_tbl:
-                    inst_str = json.dumps(inst_copy, ensure_ascii=False)
-                    inst_str = inst_str.replace(detected_table, new_tbl)
-                    inst_copy = json.loads(inst_str)
+                if replace_flag == "1" and new_tbl:
+                    # User checked replace: set both table and name to new value
+                    inst_copy = copy.deepcopy(template_instance)
+                    replace_mapping_in_json(inst_copy, new_mapping, new_table=new_tbl, new_name=new_tbl)
+                    inst_name = new_tbl
+                else:
+                    # No replace: auto-suffix the name to avoid conflicts
+                    suffix = random.randint(1, 100)
+                    # Read the existing name from config
+                    existing_name = ""
+                    cfg_str = template_instance.get("config", "")
+                    if isinstance(cfg_str, str):
+                        try:
+                            cfg_obj = json.loads(cfg_str)
+                            existing_name = cfg_obj.get("name", "")
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                    auto_name = f"{existing_name}_{suffix}" if existing_name else f"instance_{i+1}_{suffix}"
+                    inst_copy = copy.deepcopy(template_instance)
+                    replace_mapping_in_json(inst_copy, new_mapping, new_name=auto_name)
+                    inst_name = auto_name
 
                 new_instances.append((inst_name, inst_copy))
 
@@ -1323,21 +1342,30 @@ class Handler(BaseHTTPRequestHandler):
                 if not new_mapping:
                     continue  # skip tabs with no mapping
 
-                # Clone the template instance and apply mapping
-                inst_copy = copy.deepcopy(template_instance)
-                replace_mapping_in_json(inst_copy, new_mapping)
-
                 # Optional: replace table name for this tab
                 _, replace_flag_b = fields.get(f"replace_table_{i}", (None, b""))
                 _, new_tbl_b = fields.get(f"new_table_{i}", (None, b""))
                 replace_flag = replace_flag_b.decode("utf-8", errors="replace").strip()
                 new_tbl = new_tbl_b.decode("utf-8", errors="replace").strip()
 
-                if replace_flag == "1" and detected_table and new_tbl and detected_table != new_tbl:
-                    # Serialize instance, replace table name, deserialize back
-                    inst_str = json.dumps(inst_copy, ensure_ascii=False)
-                    inst_str = inst_str.replace(detected_table, new_tbl)
-                    inst_copy = json.loads(inst_str)
+                # Clone the template instance and apply mapping + name/table
+                inst_copy = copy.deepcopy(template_instance)
+                if replace_flag == "1" and new_tbl:
+                    # User checked replace: set both table and name to new value
+                    replace_mapping_in_json(inst_copy, new_mapping, new_table=new_tbl, new_name=new_tbl)
+                else:
+                    # No replace: auto-suffix the name to avoid conflicts
+                    suffix = random.randint(1, 100)
+                    existing_name = ""
+                    cfg_str = template_instance.get("config", "")
+                    if isinstance(cfg_str, str):
+                        try:
+                            cfg_obj = json.loads(cfg_str)
+                            existing_name = cfg_obj.get("name", "")
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                    auto_name = f"{existing_name}_{suffix}" if existing_name else f"instance_{i+1}_{suffix}"
+                    replace_mapping_in_json(inst_copy, new_mapping, new_name=auto_name)
 
                 new_instances.append(inst_copy)
 
