@@ -349,12 +349,12 @@ HTML = """<!DOCTYPE html>
   .le-status.error { color: var(--red); }
   .le-status.success { color: var(--green); }
   .le-version-badge {
-    display: none; font-family: var(--mono); font-size: 11px;
-    background: rgba(245,200,66,0.13); color: var(--accent);
-    border: 1px solid rgba(245,200,66,0.25); border-radius: 6px;
-    padding: 3px 10px; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--accent-dim); color: var(--accent);
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    padding: 3px 10px; border-radius: 20px; margin-left: auto;
   }
-  .le-version-badge.show { display: inline-block; }
+  .le-version-badge .le-ver-label { color: var(--muted); font-weight: 400; }
   .instance-list {
     margin-top: 16px; display: flex; flex-direction: column; gap: 6px;
     max-height: 280px; overflow-y: auto;
@@ -449,7 +449,10 @@ HTML = """<!DOCTYPE html>
           <div class="card-title">Connect to Litmus Edge</div>
           <div class="card-desc">Enter the IP and API token of your Litmus Edge device</div>
         </div>
-        <span class="le-version-badge" id="leVersionBadge"></span>
+        <span class="le-version-badge" id="leVersionBadge" style="display:none">
+          <span class="le-ver-label">LE</span>
+          <span id="leVersionValue"></span>
+        </span>
       </div>
       <div class="le-connect-row">
         <input type="text" id="leIpInput" class="text-input" placeholder="e.g. 192.168.1.100" autocomplete="off" style="flex:2">
@@ -569,6 +572,7 @@ HTML = """<!DOCTYPE html>
       submitBtn.style.display = 'block';
       pushBtn.style.display = 'none';
       document.getElementById('pushResults').style.display = 'none';
+      document.getElementById('leVersionBadge').style.display = 'none';
     }
     checkReady();
   });
@@ -603,11 +607,10 @@ HTML = """<!DOCTYPE html>
         fetch('/api/deviceinfo?ip=' + encodeURIComponent(ip) + '&token=' + encodeURIComponent(token))
           .then(r => r.ok ? r.json() : null)
           .then(info => {
-            const badge = document.getElementById('leVersionBadge');
             if (info && info.firmwareVersion) {
-              badge.textContent = 'LE ' + info.firmwareVersion;
-              badge.classList.add('show');
-            } else { badge.classList.remove('show'); }
+              document.getElementById('leVersionValue').textContent = 'v' + info.firmwareVersion;
+              document.getElementById('leVersionBadge').style.display = 'inline-flex';
+            }
           })
           .catch(() => {});
       })
@@ -615,7 +618,6 @@ HTML = """<!DOCTYPE html>
         status.textContent = 'Error: ' + err.message;
         status.className = 'le-status error';
         leInstances = [];
-        document.getElementById('leVersionBadge').classList.remove('show');
       })
       .finally(() => { btn.disabled = false; btn.textContent = 'Connect'; });
   });
@@ -1012,16 +1014,16 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path in ("/", "/index.html"):
             self.send_html(HTML.replace("{alert_html}", ""))
-        elif self.path.startswith("/api/instances"):
-            self._handle_le_instances()
         elif self.path.startswith("/api/deviceinfo"):
             self._handle_le_deviceinfo()
+        elif self.path.startswith("/api/instances"):
+            self._handle_le_instances()
         else:
             self.send_response(404)
             self.end_headers()
 
     def _handle_le_deviceinfo(self):
-        """Proxy endpoint: fetch device info (firmware version) from Litmus Edge."""
+        """Proxy endpoint: fetch device info (firmware version) from a Litmus Edge device."""
         from urllib.parse import urlparse, parse_qs
         qs = parse_qs(urlparse(self.path).query)
         ip = qs.get("ip", [""])[0].strip()
@@ -1032,6 +1034,7 @@ class Handler(BaseHTTPRequestHandler):
         if ip.lower() in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
             self._send_json_error(400, "Cannot connect to localhost")
             return
+
         url = f"https://{ip}/dm/deviceinfo"
         try:
             ctx = ssl.create_default_context()
@@ -1043,11 +1046,18 @@ class Handler(BaseHTTPRequestHandler):
             req.add_header("Authorization", f"Basic {auth_str}")
             with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
                 raw = resp.read().decode("utf-8", errors="replace")
-            data = json.loads(raw)
-            result = {"firmwareVersion": data.get("firmwareVersion", "")}
-            self._send_json_resp(result)
         except Exception:
             self._send_json_error(502, "Could not fetch device info")
+            return
+
+        try:
+            info = json.loads(raw)
+        except json.JSONDecodeError:
+            self._send_json_error(502, "Invalid JSON from device info endpoint")
+            return
+
+        result = {"firmwareVersion": info.get("firmwareVersion", "")}
+        self._send_json_resp(result)
 
     def _handle_le_instances(self):
         """Proxy endpoint: fetch connector instances from a Litmus Edge device."""
