@@ -501,10 +501,10 @@ HTML = """<!DOCTYPE html>
     <input type="hidden" name="le_token" id="leTokenHidden" value="">
 
     <button type="submit" class="btn-submit" id="submitBtn" disabled>
-      ⚡ Update Mapping &amp; Download
+      Update Mapping &amp; Download
     </button>
     <button type="button" class="btn-push" id="pushBtn" disabled>
-      🚀 Push to Litmus Edge
+      Push to Litmus Edge
     </button>
     <div class="push-results" id="pushResults" style="display:none"></div>
   </form>
