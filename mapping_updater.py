@@ -365,6 +365,26 @@ HTML = """<!DOCTYPE html>
   .instance-item.selected .inst-icon { color: var(--accent); }
   .instance-item .inst-table { color: var(--accent); font-weight: 600; }
   .instance-item .inst-provider { color: var(--muted); font-size: 10px; margin-left: auto; }
+
+  .btn-push {
+    width: 100%; background: var(--green); color: #000; border: none;
+    border-radius: 8px; padding: 15px; font-family: var(--sans);
+    font-size: 15px; font-weight: 700; cursor: pointer; letter-spacing: 0.5px;
+    transition: all 0.2s; margin-top: 8px; display: none;
+  }
+  .btn-push:hover { background: #4de6a0; transform: translateY(-1px); box-shadow: 0 8px 24px rgba(62,207,142,0.25); }
+  .btn-push:active { transform: translateY(0); }
+  .btn-push:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  .push-results {
+    margin-top: 16px; display: flex; flex-direction: column; gap: 6px;
+  }
+  .push-result-item {
+    font-family: var(--mono); font-size: 12px; padding: 8px 14px;
+    border-radius: 6px; display: flex; align-items: center; gap: 8px;
+  }
+  .push-result-item.ok { background: var(--green-dim); color: var(--green); border: 1px solid rgba(62,207,142,0.25); }
+  .push-result-item.fail { background: rgba(224,92,92,0.1); color: var(--red); border: 1px solid rgba(224,92,92,0.25); }
 </style>
 </head>
 <body>
@@ -373,7 +393,7 @@ HTML = """<!DOCTYPE html>
   <header>
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div class="badge">connector tool</div>
-      <div class="badge" style="color:var(--muted);background:rgba(255,255,255,0.04);border-color:var(--border)">v3.0</div>
+      <div class="badge" style="color:var(--muted);background:rgba(255,255,255,0.04);border-color:var(--border)">v3.1</div>
     </div>
     <h1>⇄ Connector JSON Mapping Updater</h1>
     <p class="subtitle">Upload a connector JSON, then paste your key→value columns copied from Excel.<br>The tool replaces the mapping inside config — nothing else changes.</p>
@@ -477,10 +497,16 @@ HTML = """<!DOCTYPE html>
 
     <input type="hidden" name="detected_table" id="detectedTableInput" value="">
     <input type="hidden" name="tab_count" id="tabCountInput" value="1">
+    <input type="hidden" name="le_ip" id="leIpHidden" value="">
+    <input type="hidden" name="le_token" id="leTokenHidden" value="">
 
     <button type="submit" class="btn-submit" id="submitBtn" disabled>
       ⚡ Update Mapping &amp; Download
     </button>
+    <button type="button" class="btn-push" id="pushBtn" disabled>
+      🚀 Push to Litmus Edge
+    </button>
+    <div class="push-results" id="pushResults" style="display:none"></div>
   </form>
 
   <div class="how-it-works">
@@ -507,6 +533,7 @@ HTML = """<!DOCTYPE html>
   const jsonFile   = document.getElementById('jsonFile');
   const jsonZone   = document.getElementById('jsonZone');
   const submitBtn  = document.getElementById('submitBtn');
+  const pushBtn    = document.getElementById('pushBtn');
   let tabCounter   = 1;   // total tabs ever created (for unique IDs)
   let detectedTable = '';
   let currentMode  = 'manual';  // 'manual' or 'le'
@@ -522,6 +549,8 @@ HTML = """<!DOCTYPE html>
       document.getElementById('labelLE').className = 'mode-label active';
       document.getElementById('manualCard').style.display = 'none';
       document.getElementById('leCard').classList.add('show');
+      submitBtn.style.display = 'none';
+      pushBtn.style.display = 'block';
     } else {
       currentMode = 'manual';
       this.classList.remove('le-active');
@@ -529,6 +558,9 @@ HTML = """<!DOCTYPE html>
       document.getElementById('labelLE').className = 'mode-label inactive';
       document.getElementById('manualCard').style.display = 'block';
       document.getElementById('leCard').classList.remove('show');
+      submitBtn.style.display = 'block';
+      pushBtn.style.display = 'none';
+      document.getElementById('pushResults').style.display = 'none';
     }
     checkReady();
   });
@@ -605,6 +637,47 @@ HTML = """<!DOCTYPE html>
     checkReady();
   }
 
+  // ── Push to Litmus Edge ───────────────────────────────────────────────────
+  pushBtn.addEventListener('click', function() {
+    // Sync hidden fields
+    document.getElementById('leIpHidden').value = document.getElementById('leIpInput').value.trim();
+    document.getElementById('leTokenHidden').value = document.getElementById('leTokenInput').value.trim();
+    const form = document.getElementById('mainForm');
+    const formData = new FormData(form);
+    pushBtn.disabled = true;
+    pushBtn.textContent = 'Pushing\u2026';
+    const resultsDiv = document.getElementById('pushResults');
+    resultsDiv.style.display = 'none';
+    resultsDiv.innerHTML = '';
+
+    fetch('/api/push', { method: 'POST', body: formData })
+      .then(r => r.json())
+      .then(data => {
+        resultsDiv.style.display = 'flex';
+        if (data.results && data.results.length) {
+          data.results.forEach(r => {
+            const div = document.createElement('div');
+            div.className = 'push-result-item ' + (r.ok ? 'ok' : 'fail');
+            div.textContent = (r.ok ? '\u2713 ' : '\u2717 ') + r.name + ': ' + r.message;
+            resultsDiv.appendChild(div);
+          });
+        } else if (data.error) {
+          const div = document.createElement('div');
+          div.className = 'push-result-item fail';
+          div.textContent = '\u2717 ' + data.error;
+          resultsDiv.appendChild(div);
+        }
+      })
+      .catch(err => {
+        resultsDiv.style.display = 'flex';
+        const div = document.createElement('div');
+        div.className = 'push-result-item fail';
+        div.textContent = '\u2717 Request failed: ' + err.message;
+        resultsDiv.appendChild(div);
+      })
+      .finally(() => { pushBtn.disabled = false; pushBtn.textContent = '🚀 Push to Litmus Edge'; });
+  });
+
   // ── Check if form is ready to submit ─────────────────────────────────────
   function checkReady() {
     // Source check: manual needs file, LE needs selected instance
@@ -619,9 +692,18 @@ HTML = """<!DOCTYPE html>
     const areas = document.querySelectorAll('.mappingArea');
     let anyMapping = false;
     areas.forEach(a => { if (a.value.trim()) anyMapping = true; });
-    submitBtn.disabled = !anyMapping;
+    if (currentMode === 'manual') {
+      submitBtn.disabled = !anyMapping;
+      pushBtn.disabled = true;
+    } else {
+      submitBtn.disabled = true;
+      pushBtn.disabled = !anyMapping;
+    }
     // Keep hidden tab_count in sync
     document.getElementById('tabCountInput').value = document.querySelectorAll('.tab-pane').length;
+    // Sync LE credentials into hidden fields
+    document.getElementById('leIpHidden').value = document.getElementById('leIpInput').value.trim();
+    document.getElementById('leTokenHidden').value = document.getElementById('leTokenInput').value.trim();
   }
 
   // ── JSON upload: show filename + detect table ────────────────────────────
@@ -986,6 +1068,113 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(out)
 
+    def _handle_le_push(self):
+        """Process mapping tabs and POST each instance to Litmus Edge."""
+        content_type = self.headers.get("Content-Type", "")
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length)
+
+        try:
+            fields = parse_multipart(body, content_type)
+
+            # LE credentials
+            _, ip_b = fields.get("le_ip", (None, b""))
+            _, token_b = fields.get("le_token", (None, b""))
+            le_ip = ip_b.decode("utf-8", errors="replace").strip()
+            le_token = token_b.decode("utf-8", errors="replace").strip()
+            if not le_ip or not le_token:
+                self._send_json_resp({"error": "Missing LE IP or API token"})
+                return
+
+            # Source instance
+            _, le_json_b = fields.get("le_instance_json", (None, b""))
+            le_json_str = le_json_b.decode("utf-8", errors="replace").strip()
+            if not le_json_str:
+                self._send_json_resp({"error": "No template instance selected"})
+                return
+            try:
+                template_instance = json.loads(le_json_str)
+            except json.JSONDecodeError as e:
+                self._send_json_resp({"error": f"Invalid instance data: {e}"})
+                return
+
+            # Detected table name
+            _, det_tbl_b = fields.get("detected_table", (None, b""))
+            detected_table = det_tbl_b.decode("utf-8", errors="replace").strip()
+
+            # Number of tabs
+            _, tc_b = fields.get("tab_count", (None, b"1"))
+            try:
+                tab_count = max(1, int(tc_b.decode("utf-8", errors="replace").strip()))
+            except ValueError:
+                tab_count = 1
+
+            # Build instances from tabs
+            new_instances = []
+            for i in range(tab_count):
+                _, mapping_b = fields.get(f"mapping_text_{i}", (None, b""))
+                mapping_text = mapping_b.decode("utf-8", errors="replace")
+                new_mapping = parse_mapping_text(mapping_text)
+                if not new_mapping:
+                    continue
+
+                inst_copy = copy.deepcopy(template_instance)
+                replace_mapping_in_json(inst_copy, new_mapping)
+
+                _, replace_flag_b = fields.get(f"replace_table_{i}", (None, b""))
+                _, new_tbl_b = fields.get(f"new_table_{i}", (None, b""))
+                replace_flag = replace_flag_b.decode("utf-8", errors="replace").strip()
+                new_tbl = new_tbl_b.decode("utf-8", errors="replace").strip()
+
+                inst_name = new_tbl or detected_table or f"instance_{i+1}"
+                if replace_flag == "1" and detected_table and new_tbl and detected_table != new_tbl:
+                    inst_str = json.dumps(inst_copy, ensure_ascii=False)
+                    inst_str = inst_str.replace(detected_table, new_tbl)
+                    inst_copy = json.loads(inst_str)
+
+                new_instances.append((inst_name, inst_copy))
+
+            if not new_instances:
+                self._send_json_resp({"error": "No tabs contained valid mapping data"})
+                return
+
+            # POST each instance to LE
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            auth_str = base64.b64encode(f"{le_token}:".encode("utf-8")).decode("ascii")
+            push_url = f"https://{le_ip}/cc/instances"
+
+            results = []
+            for name, inst in new_instances:
+                payload = json.dumps(inst, ensure_ascii=False).encode("utf-8")
+                try:
+                    req = urllib.request.Request(push_url, data=payload, method="POST")
+                    req.add_header("Content-Type", "application/json")
+                    req.add_header("Accept", "application/json")
+                    req.add_header("Authorization", f"Basic {auth_str}")
+                    with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+                        resp_body = resp.read().decode("utf-8", errors="replace")
+                        results.append({"name": name, "ok": True, "message": f"Created (HTTP {resp.status})"})
+                except urllib.error.HTTPError as e:
+                    err_body = e.read().decode("utf-8", errors="replace")[:200]
+                    results.append({"name": name, "ok": False, "message": f"HTTP {e.code}: {err_body}"})
+                except Exception as e:
+                    results.append({"name": name, "ok": False, "message": str(e)})
+
+            self._send_json_resp({"results": results})
+
+        except Exception as e:
+            self._send_json_resp({"error": str(e)})
+
+    def _send_json_resp(self, obj):
+        body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def _send_json_error(self, status, msg):
         body = json.dumps({"error": msg}).encode("utf-8")
         self.send_response(status)
@@ -995,6 +1184,9 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
+        if self.path == "/api/push":
+            self._handle_le_push()
+            return
         if self.path != "/update":
             self.send_response(404)
             self.end_headers()
