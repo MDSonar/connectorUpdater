@@ -522,7 +522,7 @@ HTML = """<!DOCTYPE html>
 
   <div class="how-it-works">
     <div class="how-title">How it works</div>
-    <div class="steps">
+    <div class="steps" id="howSteps">
       <div class="step">
         <div class="step-num">01</div>
         <div class="step-text"><strong>Upload</strong> your connector JSON</div>
@@ -553,6 +553,15 @@ HTML = """<!DOCTYPE html>
 
   // ── Mode Toggle ──────────────────────────────────────────────────────────
   document.getElementById('modeToggle').addEventListener('click', function() {
+    const howSteps = document.getElementById('howSteps');
+    const manualSteps =
+      '<div class="step"><div class="step-num">01</div><div class="step-text"><strong>Upload</strong> your connector JSON</div></div>' +
+      '<div class="step"><div class="step-num">02</div><div class="step-text"><strong>Add tabs</strong> for each connector. <strong>Paste</strong> key\u2192value columns and set table names</div></div>' +
+      '<div class="step"><div class="step-num">03</div><div class="step-text"><strong>Download</strong> one JSON with all tabs as separate instances</div></div>';
+    const leSteps =
+      '<div class="step"><div class="step-num">01</div><div class="step-text"><strong>Connect</strong> to your Litmus Edge device using IP &amp; API token</div></div>' +
+      '<div class="step"><div class="step-num">02</div><div class="step-text"><strong>Select</strong> a connector instance, then <strong>add tabs</strong> with new mappings &amp; table names</div></div>' +
+      '<div class="step"><div class="step-num">03</div><div class="step-text"><strong>Push</strong> updated instances directly back to Litmus Edge</div></div>';
     if (currentMode === 'manual') {
       currentMode = 'le';
       this.classList.add('le-active');
@@ -562,6 +571,7 @@ HTML = """<!DOCTYPE html>
       document.getElementById('leCard').classList.add('show');
       submitBtn.style.display = 'none';
       pushBtn.style.display = 'block';
+      howSteps.innerHTML = leSteps;
     } else {
       currentMode = 'manual';
       this.classList.remove('le-active');
@@ -573,6 +583,7 @@ HTML = """<!DOCTYPE html>
       pushBtn.style.display = 'none';
       document.getElementById('pushResults').style.display = 'none';
       document.getElementById('leVersionBadge').style.display = 'none';
+      howSteps.innerHTML = manualSteps;
     }
     checkReady();
   });
