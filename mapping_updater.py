@@ -348,6 +348,13 @@ HTML = """<!DOCTYPE html>
   }
   .le-status.error { color: var(--red); }
   .le-status.success { color: var(--green); }
+  .le-version-badge {
+    display: none; font-family: var(--mono); font-size: 11px;
+    background: rgba(245,200,66,0.13); color: var(--accent);
+    border: 1px solid rgba(245,200,66,0.25); border-radius: 6px;
+    padding: 3px 10px; white-space: nowrap;
+  }
+  .le-version-badge.show { display: inline-block; }
   .instance-list {
     margin-top: 16px; display: flex; flex-direction: column; gap: 6px;
     max-height: 280px; overflow-y: auto;
@@ -442,6 +449,7 @@ HTML = """<!DOCTYPE html>
           <div class="card-title">Connect to Litmus Edge</div>
           <div class="card-desc">Enter the IP and API token of your Litmus Edge device</div>
         </div>
+        <span class="le-version-badge" id="leVersionBadge"></span>
       </div>
       <div class="le-connect-row">
         <input type="text" id="leIpInput" class="text-input" placeholder="e.g. 192.168.1.100" autocomplete="off" style="flex:2">
@@ -591,11 +599,23 @@ HTML = """<!DOCTYPE html>
         status.textContent = data.length + ' instance' + (data.length !== 1 ? 's' : '') + ' found';
         status.className = 'le-status success';
         renderInstanceList(data);
+        // Fetch LE firmware version
+        fetch('/api/deviceinfo?ip=' + encodeURIComponent(ip) + '&token=' + encodeURIComponent(token))
+          .then(r => r.ok ? r.json() : null)
+          .then(info => {
+            const badge = document.getElementById('leVersionBadge');
+            if (info && info.firmwareVersion) {
+              badge.textContent = 'LE ' + info.firmwareVersion;
+              badge.classList.add('show');
+            } else { badge.classList.remove('show'); }
+          })
+          .catch(() => {});
       })
       .catch(err => {
         status.textContent = 'Error: ' + err.message;
         status.className = 'le-status error';
         leInstances = [];
+        document.getElementById('leVersionBadge').classList.remove('show');
       })
       .finally(() => { btn.disabled = false; btn.textContent = 'Connect'; });
   });
@@ -994,9 +1014,40 @@ class Handler(BaseHTTPRequestHandler):
             self.send_html(HTML.replace("{alert_html}", ""))
         elif self.path.startswith("/api/instances"):
             self._handle_le_instances()
+        elif self.path.startswith("/api/deviceinfo"):
+            self._handle_le_deviceinfo()
         else:
             self.send_response(404)
             self.end_headers()
+
+    def _handle_le_deviceinfo(self):
+        """Proxy endpoint: fetch device info (firmware version) from Litmus Edge."""
+        from urllib.parse import urlparse, parse_qs
+        qs = parse_qs(urlparse(self.path).query)
+        ip = qs.get("ip", [""])[0].strip()
+        token = qs.get("token", [""])[0].strip()
+        if not ip or not token:
+            self._send_json_error(400, "Missing ip or token")
+            return
+        if ip.lower() in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+            self._send_json_error(400, "Cannot connect to localhost")
+            return
+        url = f"https://{ip}/dm/deviceinfo"
+        try:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            req = urllib.request.Request(url, method="GET")
+            req.add_header("Accept", "application/json")
+            auth_str = base64.b64encode(f"{token}:".encode("utf-8")).decode("ascii")
+            req.add_header("Authorization", f"Basic {auth_str}")
+            with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+            data = json.loads(raw)
+            result = {"firmwareVersion": data.get("firmwareVersion", "")}
+            self._send_json_resp(result)
+        except Exception:
+            self._send_json_error(502, "Could not fetch device info")
 
     def _handle_le_instances(self):
         """Proxy endpoint: fetch connector instances from a Litmus Edge device."""
