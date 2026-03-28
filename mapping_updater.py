@@ -374,6 +374,33 @@ HTML = """<!DOCTYPE html>
   .instance-item .inst-table { color: var(--accent); font-weight: 600; }
   .instance-item .inst-provider { color: var(--muted); font-size: 10px; margin-left: auto; }
 
+  /* ── Ping Utility ───────────────────────────────────────── */
+  .ping-section {
+    margin-top: 14px; padding-top: 14px;
+    border-top: 1px dashed var(--border);
+  }
+  .ping-row {
+    display: flex; gap: 8px; align-items: center;
+  }
+  .ping-row input { flex: 1; }
+  .btn-ping {
+    padding: 7px 18px; border-radius: 8px; border: none;
+    background: var(--surface); color: var(--text);
+    font-family: var(--sans); font-size: 12px; font-weight: 600;
+    cursor: pointer; white-space: nowrap; transition: all 0.2s;
+    border: 1.5px solid var(--border);
+  }
+  .btn-ping:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-ping:disabled { opacity: 0.4; cursor: not-allowed; }
+  .ping-result {
+    font-family: var(--mono); font-size: 11px; margin-top: 8px;
+    padding: 8px 12px; border-radius: 6px; display: none;
+    white-space: pre-wrap; line-height: 1.5;
+  }
+  .ping-result.ok { background: var(--green-dim); color: var(--green); display: block; }
+  .ping-result.fail { background: rgba(224,92,92,0.1); color: var(--red); display: block; }
+  .ping-result.pending { background: var(--surface); color: var(--muted); display: block; }
+
   .btn-push {
     width: 100%; background: var(--green); color: #000; border: none;
     border-radius: 8px; padding: 15px; font-family: var(--sans);
@@ -462,6 +489,13 @@ HTML = """<!DOCTYPE html>
       </div>
       <div class="le-status" id="leStatus"></div>
       <div class="instance-list" id="instanceList" style="display:none"></div>
+      <div class="ping-section">
+        <div class="ping-row">
+          <input type="text" id="pingIpInput" class="text-input" placeholder="IP to ping (e.g. 192.168.1.100)" autocomplete="off">
+          <button type="button" class="btn-ping" id="pingBtn">Ping</button>
+        </div>
+        <div class="ping-result" id="pingResult"></div>
+      </div>
     </div>
 
     <input type="hidden" name="le_instance_json" id="leInstanceJson" value="">
@@ -587,6 +621,35 @@ HTML = """<!DOCTYPE html>
       howSteps.innerHTML = manualSteps;
     }
     checkReady();
+  });
+
+  // ── Ping Utility ─────────────────────────────────────────────────────────
+  document.getElementById('pingBtn').addEventListener('click', function() {
+    const ip = document.getElementById('pingIpInput').value.trim() || document.getElementById('leIpInput').value.trim();
+    if (!ip) { return; }
+    document.getElementById('pingIpInput').value = ip;
+    const res = document.getElementById('pingResult');
+    const btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Pinging\\u2026';
+    res.className = 'ping-result pending';
+    res.textContent = 'Pinging ' + ip + '\\u2026';
+    fetch('/api/ping?ip=' + encodeURIComponent(ip))
+      .then(r => r.json())
+      .then(data => {
+        if (data.reachable) {
+          res.className = 'ping-result ok';
+          res.textContent = '\\u2713 ' + ip + ' is reachable\\n' + data.detail;
+        } else {
+          res.className = 'ping-result fail';
+          res.textContent = '\\u2717 ' + ip + ' is not reachable\\n' + data.detail;
+        }
+      })
+      .catch(err => {
+        res.className = 'ping-result fail';
+        res.textContent = '\\u2717 Ping failed: ' + err.message;
+      })
+      .finally(() => { btn.disabled = false; btn.textContent = 'Ping'; });
   });
 
   // ── Litmus Edge: Connect + fetch instances ───────────────────────────────
@@ -1031,6 +1094,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path in ("/", "/index.html"):
             self.send_html(HTML.replace("{alert_html}", ""))
+        elif self.path.startswith("/api/ping"):
+            self._handle_ping()
         elif self.path.startswith("/api/deviceinfo"):
             self._handle_le_deviceinfo()
         elif self.path.startswith("/api/instances"):
@@ -1038,6 +1103,45 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_response(404)
             self.end_headers()
+
+    def _handle_ping(self):
+        """Ping an IP address to check basic network reachability."""
+        import subprocess, platform
+        from urllib.parse import urlparse, parse_qs
+        qs = parse_qs(urlparse(self.path).query)
+        ip = qs.get("ip", [""])[0].strip()
+        if not ip:
+            self._send_json_error(400, "Missing 'ip' parameter")
+            return
+        # Validate IP: only allow dotted notation or simple hostnames
+        if not re.match(r'^[a-zA-Z0-9._-]+$', ip):
+            self._send_json_error(400, "Invalid IP address")
+            return
+        if ip.lower() in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+            self._send_json_error(400, "Cannot ping localhost")
+            return
+
+        # Platform-aware ping: -n on Windows, -c on Unix
+        count_flag = "-n" if platform.system().lower() == "windows" else "-c"
+        try:
+            result = subprocess.run(
+                ["ping", count_flag, "1", "-w", "3000", ip],
+                capture_output=True, text=True, timeout=10
+            )
+            reachable = result.returncode == 0
+            # Extract just the summary lines
+            lines = result.stdout.strip().splitlines()
+            detail = "\\n".join(lines[-3:]) if len(lines) >= 3 else result.stdout.strip()
+            if not reachable and result.stderr.strip():
+                detail = result.stderr.strip()
+        except subprocess.TimeoutExpired:
+            reachable = False
+            detail = "Ping timed out after 10 seconds"
+        except Exception as e:
+            reachable = False
+            detail = str(e)
+
+        self._send_json_resp({"reachable": reachable, "detail": detail})
 
     def _handle_le_deviceinfo(self):
         """Proxy endpoint: fetch device info (firmware version) from a Litmus Edge device."""
