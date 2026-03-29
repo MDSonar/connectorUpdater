@@ -276,6 +276,57 @@ HTML = """<!DOCTYPE html>
   .dt-status.error   { color: var(--red); }
   .dt-status.success { color: var(--green); }
 
+  /* DT Preview tabs & table */
+  .dt-preview-tabs {
+    display: flex; gap: 0; border-bottom: 1px solid var(--border);
+    margin: 14px 0 0; padding: 0 14px;
+  }
+  .dt-tab-btn {
+    background: none; border: none; border-bottom: 2px solid transparent;
+    color: var(--muted); font-family: var(--mono); font-size: 11px;
+    padding: 8px 14px; cursor: pointer; transition: color 0.15s, border-color 0.15s;
+  }
+  .dt-tab-btn:hover { color: var(--text); }
+  .dt-tab-btn.active { color: var(--green); border-bottom-color: var(--green); }
+  .dt-tab-content { display: none; padding: 14px; }
+  .dt-tab-content.active { display: block; }
+  .dt-preview-status {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    padding: 8px 14px 0;
+  }
+  .dt-preview-status.error { color: var(--red); }
+  .dt-attr-table {
+    width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px;
+  }
+  .dt-attr-table th {
+    text-align: left; color: var(--muted); font-weight: 600; font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    padding: 6px 10px; border-bottom: 1px solid var(--border);
+  }
+  .dt-attr-table td {
+    padding: 7px 10px; border-bottom: 1px solid rgba(34,34,46,0.5);
+    color: var(--text); word-break: break-all;
+  }
+  .dt-attr-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .dt-attr-table td:first-child { color: var(--accent); font-weight: 600; }
+  .dt-empty {
+    display: none; text-align: center; color: var(--muted);
+    font-size: 12px; padding: 24px 14px;
+  }
+  .dt-tree {
+    font-family: var(--mono); font-size: 12px; padding: 4px 0;
+  }
+  .dt-tree-node { padding-left: 18px; }
+  .dt-tree-label {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 6px; border-radius: 4px; cursor: default;
+  }
+  .dt-tree-label:hover { background: rgba(255,255,255,0.03); }
+  .dt-tree-folder { color: var(--accent); font-weight: 600; }
+  .dt-tree-attr-static { color: var(--muted); }
+  .dt-tree-attr-dynamic { color: var(--green); }
+  .dt-tree-icon { font-size: 11px; width: 14px; text-align: center; }
+
   /* Ping row inside top panel */
   .ping-separator { width: 1px; height: 26px; background: var(--border); margin: 0 4px; }
   .ping-result-inline {
@@ -773,6 +824,41 @@ HTML = """<!DOCTYPE html>
         <div class="dt-status" id="dtStatus" style="display:none"></div>
         <div class="instance-list" id="dtModelList"></div>
       </div>
+
+      <!-- DT: Model Preview (shown after a model is selected) -->
+      <div class="card" id="dtPreviewCard" style="display:none">
+        <div class="card-header">
+          <div class="card-icon icon-json" style="background:rgba(62,207,142,0.12)">&#x1f50d;</div>
+          <div>
+            <div class="card-title">Model Preview</div>
+            <div class="card-desc" id="dtPreviewDesc">Inspect the selected template model configuration</div>
+          </div>
+        </div>
+        <div class="dt-preview-tabs">
+          <button type="button" class="dt-tab-btn active" data-dtab="static">Static Attributes</button>
+          <button type="button" class="dt-tab-btn" data-dtab="dynamic">Dynamic Attributes</button>
+          <button type="button" class="dt-tab-btn" data-dtab="hierarchy">Hierarchy / Schema</button>
+        </div>
+        <div class="dt-preview-status" id="dtPreviewStatus"></div>
+        <div class="dt-tab-content active" id="dtTabStatic">
+          <table class="dt-attr-table" id="dtStaticTable">
+            <thead><tr><th>Key</th><th>Value</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <div class="dt-empty" id="dtStaticEmpty">No static attributes found</div>
+        </div>
+        <div class="dt-tab-content" id="dtTabDynamic">
+          <table class="dt-attr-table" id="dtDynamicTable">
+            <thead><tr><th>Name</th><th>Unit</th><th>DataType</th><th>Topic</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <div class="dt-empty" id="dtDynamicEmpty">No dynamic attributes found</div>
+        </div>
+        <div class="dt-tab-content" id="dtTabHierarchy">
+          <div class="dt-tree" id="dtHierarchyTree"></div>
+          <div class="dt-empty" id="dtHierarchyEmpty">No hierarchy data found</div>
+        </div>
+      </div>
     </div>
     <!-- /pane-dtwin -->
 
@@ -1268,6 +1354,111 @@ HTML = """<!DOCTYPE html>
       el.classList.toggle('selected', i === idx);
       el.querySelector('.inst-icon').textContent = (i === idx) ? '\u25cf' : '\u25cb';
     });
+    // Show preview and fetch model details
+    const model = dtModels[idx];
+    if (model) {
+      document.getElementById('dtPreviewCard').style.display = 'block';
+      document.getElementById('dtPreviewDesc').textContent = 'Inspecting: ' + (model.Name || 'Unnamed');
+      fetchDtPreview(model.ID);
+    }
+  }
+
+  // ── DT Preview tabs ──────────────────────────────────────────────────
+  document.querySelectorAll('.dt-tab-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.dt-tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.dt-tab-content').forEach(c => c.classList.remove('active'));
+      this.classList.add('active');
+      const target = document.getElementById('dtTab' + this.getAttribute('data-dtab').charAt(0).toUpperCase() + this.getAttribute('data-dtab').slice(1));
+      if (target) target.classList.add('active');
+    });
+  });
+
+  // ── DT Preview fetch ─────────────────────────────────────────────────
+  function dtApiParams() {
+    const ip = document.getElementById('leIpInput').value.trim();
+    const token = document.getElementById('leTokenInput').value.trim();
+    return 'ip=' + encodeURIComponent(ip) + '&token=' + encodeURIComponent(token);
+  }
+
+  function fetchDtPreview(modelId) {
+    const status = document.getElementById('dtPreviewStatus');
+    status.textContent = 'Loading model data\u2026';
+    status.className = 'dt-preview-status';
+    // Reset all tabs
+    document.querySelector('#dtStaticTable tbody').innerHTML = '';
+    document.querySelector('#dtDynamicTable tbody').innerHTML = '';
+    document.getElementById('dtHierarchyTree').innerHTML = '';
+    document.getElementById('dtStaticEmpty').style.display = 'none';
+    document.getElementById('dtDynamicEmpty').style.display = 'none';
+    document.getElementById('dtHierarchyEmpty').style.display = 'none';
+
+    const base = dtApiParams() + '&model_id=' + encodeURIComponent(modelId);
+
+    // Fetch all three in parallel
+    Promise.all([
+      fetch('/api/dt/static-attrs?' + base).then(r => r.ok ? r.json() : []),
+      fetch('/api/dt/dynamic-attrs?' + base).then(r => r.ok ? r.json() : []),
+      fetch('/api/dt/hierarchy?' + base).then(r => r.ok ? r.json() : {})
+    ]).then(([staticAttrs, dynamicAttrs, hierarchy]) => {
+      renderDtStaticAttrs(staticAttrs);
+      renderDtDynamicAttrs(dynamicAttrs);
+      renderDtHierarchy(hierarchy);
+      status.textContent = '';
+    }).catch(err => {
+      status.textContent = 'Error loading preview: ' + err.message;
+      status.className = 'dt-preview-status error';
+    });
+  }
+
+  function renderDtStaticAttrs(attrs) {
+    const tbody = document.querySelector('#dtStaticTable tbody');
+    const empty = document.getElementById('dtStaticEmpty');
+    if (!attrs || !attrs.length) { empty.style.display = 'block'; return; }
+    empty.style.display = 'none';
+    attrs.forEach(a => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + escHtml(a.Key || '') + '</td><td>' + escHtml(a.Value || '') + '</td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  function renderDtDynamicAttrs(attrs) {
+    const tbody = document.querySelector('#dtDynamicTable tbody');
+    const empty = document.getElementById('dtDynamicEmpty');
+    if (!attrs || !attrs.length) { empty.style.display = 'block'; return; }
+    empty.style.display = 'none';
+    attrs.forEach(a => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + escHtml(a.Name || '') + '</td>' +
+        '<td>' + escHtml(a.Unit || '\u2014') + '</td>' +
+        '<td>' + escHtml(a.DataType || 'JSON') + '</td>' +
+        '<td>' + escHtml(a.Topic || '\u2014') + '</td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  function renderDtHierarchy(node) {
+    const tree = document.getElementById('dtHierarchyTree');
+    const empty = document.getElementById('dtHierarchyEmpty');
+    if (!node || (!node.Name && !node.Childs)) { empty.style.display = 'block'; return; }
+    empty.style.display = 'none';
+    tree.innerHTML = buildTreeHtml(node, 0);
+  }
+
+  function buildTreeHtml(node, depth) {
+    if (!node) return '';
+    var isFolder = !node.Node || (node.Node && node.Node.IsFolder);
+    var attrType = node.Node && node.Node.AttributeType ? node.Node.AttributeType : '';
+    var cls = isFolder ? 'dt-tree-folder' : (attrType === 'dynamic' ? 'dt-tree-attr-dynamic' : 'dt-tree-attr-static');
+    var icon = isFolder ? '\u25b8' : (attrType === 'dynamic' ? '\u26a1' : '\u2022');
+    var html = '<div class="dt-tree-node" style="padding-left:' + (depth * 18) + 'px">';
+    html += '<span class="dt-tree-label ' + cls + '"><span class="dt-tree-icon">' + icon + '</span>' + escHtml(node.Name || '') + '</span>';
+    html += '</div>';
+    if (node.Childs && node.Childs.length) {
+      node.Childs.forEach(function(child) { html += buildTreeHtml(child, depth + 1); });
+    }
+    return html;
   }
 
   // Reset DT pane when switching back to manual mode
@@ -1275,6 +1466,7 @@ HTML = """<!DOCTYPE html>
     dtModels = [];
     selectedDtModelIdx = -1;
     document.getElementById('dtModelCard').style.display   = 'none';
+    document.getElementById('dtPreviewCard').style.display  = 'none';
     document.getElementById('dtNoConnection').style.display = 'block';
     var list = document.getElementById('dtModelList');
     if (list) list.innerHTML = '';
@@ -1378,6 +1570,12 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_le_instances()
         elif self.path.startswith("/api/dt/models"):
             self._handle_dt_models()
+        elif self.path.startswith("/api/dt/static-attrs"):
+            self._handle_dt_static_attrs()
+        elif self.path.startswith("/api/dt/dynamic-attrs"):
+            self._handle_dt_dynamic_attrs()
+        elif self.path.startswith("/api/dt/hierarchy"):
+            self._handle_dt_hierarchy()
         else:
             self.send_response(404)
             self.end_headers()
@@ -1543,36 +1741,15 @@ class Handler(BaseHTTPRequestHandler):
         if ip.lower() in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
             self._send_json_error(400, "Cannot connect to localhost")
             return
-
-        url = f"https://{ip}/digital-twins"
-        gql_body = json.dumps({
-            "query": "query ListModels { ListModels { ID Name } }",
-            "variables": {}
-        }).encode("utf-8")
         try:
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-            req = urllib.request.Request(url, data=gql_body, method="POST")
-            req.add_header("Content-Type", "application/json")
-            req.add_header("Accept", "application/json")
-            auth_str = base64.b64encode(f"{token}:".encode("utf-8")).decode("ascii")
-            req.add_header("Authorization", f"Basic {auth_str}")
-            with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
-                raw = resp.read().decode("utf-8", errors="replace")
+            payload = self._dt_graphql(ip, token,
+                "query ListModels { ListModels { ID Name } }", {})
         except urllib.error.HTTPError as e:
             self._send_json_error(502, f"Litmus Edge returned HTTP {e.code}")
             return
         except Exception as e:
             self._send_json_error(502, f"Cannot reach Litmus Edge at {ip}: {e}")
             return
-
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError:
-            self._send_json_error(502, "Invalid JSON response from Litmus Edge")
-            return
-
         models = []
         if isinstance(payload, dict):
             data = payload.get("data", {})
@@ -1580,8 +1757,107 @@ class Handler(BaseHTTPRequestHandler):
                 models = data.get("ListModels", [])
         if not isinstance(models, list):
             models = []
-
         self._send_json_resp(models)
+
+    def _dt_graphql(self, ip, token, query, variables):
+        """Helper: execute a GraphQL call to the Digital Twins endpoint."""
+        url = f"https://{ip}/digital-twins"
+        gql_body = json.dumps({"query": query, "variables": variables}).encode("utf-8")
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        req = urllib.request.Request(url, data=gql_body, method="POST")
+        req.add_header("Content-Type", "application/json")
+        req.add_header("Accept", "application/json")
+        auth_str = base64.b64encode(f"{token}:".encode("utf-8")).decode("ascii")
+        req.add_header("Authorization", f"Basic {auth_str}")
+        with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+            return json.loads(resp.read().decode("utf-8", errors="replace"))
+
+    def _dt_parse_qs(self):
+        """Parse and validate ip, token, model_id from query string."""
+        from urllib.parse import urlparse, parse_qs
+        qs = parse_qs(urlparse(self.path).query)
+        ip = qs.get("ip", [""])[0].strip()
+        token = qs.get("token", [""])[0].strip()
+        model_id = qs.get("model_id", [""])[0].strip()
+        if not ip:
+            self._send_json_error(400, "Missing 'ip' parameter")
+            return None
+        if not token:
+            self._send_json_error(400, "Missing API token")
+            return None
+        if ip.lower() in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+            self._send_json_error(400, "Cannot connect to localhost")
+            return None
+        if not model_id:
+            self._send_json_error(400, "Missing 'model_id' parameter")
+            return None
+        return ip, token, model_id
+
+    def _handle_dt_static_attrs(self):
+        """Fetch static attributes for a Digital Twin model."""
+        params = self._dt_parse_qs()
+        if not params:
+            return
+        ip, token, model_id = params
+        query = ("query ListStaticAttributes($input:ListStaticAttributeRequest!) {"
+                 "  ListStaticAttributes(input: $input) {"
+                 "    ID ModelID InstanceID Key Value CreatedAt UpdatedAt"
+                 "  }}") 
+        variables = {"input": {"ModelID": model_id, "InstanceID": None}}
+        try:
+            payload = self._dt_graphql(ip, token, query, variables)
+        except urllib.error.HTTPError as e:
+            self._send_json_error(502, f"Litmus Edge returned HTTP {e.code}")
+            return
+        except Exception as e:
+            self._send_json_error(502, f"Cannot reach Litmus Edge: {e}")
+            return
+        attrs = payload.get("data", {}).get("ListStaticAttributes", [])
+        self._send_json_resp(attrs if isinstance(attrs, list) else [])
+
+    def _handle_dt_dynamic_attrs(self):
+        """Fetch dynamic attributes for a Digital Twin model."""
+        params = self._dt_parse_qs()
+        if not params:
+            return
+        ip, token, model_id = params
+        query = ("query ListDynamicAttributes($input: ListDynamicAttributeRequest!) {"
+                 "  ListDynamicAttributes(input:$input) {"
+                 "    ID ModelID InstanceID Topic Name Unit DataType SchemaID CreatedAt UpdatedAt"
+                 "  }}")
+        variables = {"input": {"ModelID": model_id}}
+        try:
+            payload = self._dt_graphql(ip, token, query, variables)
+        except urllib.error.HTTPError as e:
+            self._send_json_error(502, f"Litmus Edge returned HTTP {e.code}")
+            return
+        except Exception as e:
+            self._send_json_error(502, f"Cannot reach Litmus Edge: {e}")
+            return
+        attrs = payload.get("data", {}).get("ListDynamicAttributes", [])
+        self._send_json_resp(attrs if isinstance(attrs, list) else [])
+
+    def _handle_dt_hierarchy(self):
+        """Fetch schema hierarchy for a Digital Twin model."""
+        params = self._dt_parse_qs()
+        if not params:
+            return
+        ip, token, model_id = params
+        query = ("query GetHierarchy($input : GetHierarchyRequest!) {"
+                 "  GetHierarchy(input: $input)}") 
+        variables = {"input": {"ModelID": model_id}}
+        try:
+            payload = self._dt_graphql(ip, token, query, variables)
+        except urllib.error.HTTPError as e:
+            self._send_json_error(502, f"Litmus Edge returned HTTP {e.code}")
+            return
+        except Exception as e:
+            self._send_json_error(502, f"Cannot reach Litmus Edge: {e}")
+            return
+        hierarchy = payload.get("data", {}).get("GetHierarchy", {})
+        self._send_json_resp(hierarchy if isinstance(hierarchy, dict) else {})
 
     def _handle_le_push(self):
         """Process mapping tabs and POST each instance to Litmus Edge."""
