@@ -64,8 +64,8 @@ HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Connector JSON Mapping Updater</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⇄</text></svg>">
+<title>Litmus Deployment Assist</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⬡</text></svg>">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600&display=swap');
 
@@ -85,50 +85,243 @@ HTML = """<!DOCTYPE html>
     --muted: #5a5a72;
     --mono: 'JetBrains Mono', monospace;
     --sans: 'Inter', sans-serif;
+    --sidebar-w: 200px;
   }
+
+  html, body { height: 100%; overflow: hidden; }
 
   body {
     background: var(--bg);
     color: var(--text);
     font-family: var(--sans);
-    min-height: 100vh;
-    padding: 48px 24px;
+    display: flex;
+    flex-direction: row;
   }
 
-  .container { max-width: 820px; margin: 0 auto; }
+  /* ── Sidebar ──────────────────────────────────────────────────────────── */
+  .sidebar {
+    width: var(--sidebar-w);
+    flex-shrink: 0;
+    background: #0a0a0d;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
 
-  header { margin-bottom: 48px; }
+  .sidebar-logo {
+    padding: 20px 18px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-logo-line1 {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .sidebar-logo-line2 {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+
+  .sidebar-nav { flex: 1; padding: 12px 8px; overflow-y: auto; }
+
+  .nav-section-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 10px 10px 6px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 9px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    margin-bottom: 2px;
+    border: 1.5px solid transparent;
+  }
+  .nav-item:hover { background: rgba(255,255,255,0.04); }
+  .nav-item.active {
+    background: var(--accent-dim);
+    border-color: rgba(245,200,66,0.25);
+  }
+  .nav-item-icon {
+    font-size: 15px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .nav-item-text {}
+  .nav-item-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.3;
+  }
+  .nav-item.active .nav-item-title { color: var(--accent); }
+  .nav-item-sub {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+    line-height: 1.4;
+  }
+
+  .sidebar-footer {
+    padding: 12px 18px;
+    border-top: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+
+  /* ── Main area ───────────────────────────────────────────────────────── */
+  .main-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  /* ── Top panel (fixed, shared LE connection) ──────────────────────────── */
+  .top-panel {
+    border-bottom: 1px solid var(--border);
+    background: #0f0f14;
+    padding: 14px 24px;
+    flex-shrink: 0;
+  }
+
+  .top-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .top-app-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .mode-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .mode-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    transition: color 0.2s;
+  }
+  .mode-label.active  { color: var(--accent); }
+  .mode-label.inactive { color: var(--muted); }
+  .toggle-track {
+    width: 44px; height: 24px; border-radius: 12px;
+    background: var(--border-hover); cursor: pointer;
+    position: relative; transition: background 0.25s;
+    border: 1px solid var(--border);
+  }
+  .toggle-track.le-active { background: var(--accent-dim); border-color: rgba(245,200,66,0.35); }
+  .toggle-knob {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #fff; position: absolute; top: 2px; left: 3px;
+    transition: transform 0.25s; box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  }
+  .toggle-track.le-active .toggle-knob { transform: translateX(20px); }
+
+  .le-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .le-row-hidden { display: none !important; }
+
+  .le-version-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--accent-dim); color: var(--accent);
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    padding: 3px 10px; border-radius: 20px;
+  }
+  .le-version-badge .le-ver-label { color: var(--muted); font-weight: 400; }
+
+  .le-status {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    margin-left: 4px;
+  }
+  .le-status.error   { color: var(--red); }
+  .le-status.success { color: var(--green); }
+
+  /* Ping row inside top panel */
+  .ping-separator { width: 1px; height: 26px; background: var(--border); margin: 0 4px; }
+  .ping-result-inline {
+    font-family: var(--mono); font-size: 11px; padding: 4px 10px;
+    border-radius: 6px; display: none;
+  }
+  .ping-result-inline.ok   { background: var(--green-dim); color: var(--green); display: inline-block; }
+  .ping-result-inline.fail { background: rgba(224,92,92,0.1); color: var(--red); display: inline-block; }
+  .ping-result-inline.pending { background: var(--surface); color: var(--muted); display: inline-block; }
+
+  /* ── Bottom panel (scrollable, per-app content) ──────────────────────── */
+  .bottom-panel {
+    flex: 1;
+    overflow-y: auto;
+    padding: 28px 28px;
+    min-height: 0;
+  }
+
+  .app-pane { display: none; }
+  .app-pane.active { display: block; }
+
+  /* ── Common card / input styles ──────────────────────────────────────── */
   .badge {
     display: inline-flex; align-items: center; gap: 7px;
     background: var(--accent-dim); border: 1px solid rgba(245,200,66,0.25);
     color: var(--accent); font-family: var(--mono); font-size: 10px;
     letter-spacing: 2px; text-transform: uppercase;
-    padding: 5px 12px; border-radius: 20px; margin-bottom: 16px;
+    padding: 5px 12px; border-radius: 20px; margin-bottom: 14px;
   }
   .badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 2s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
-  h1 { font-size: 32px; font-weight: 700; color: #fff; line-height: 1.2; margin-bottom: 8px; }
-  .subtitle { color: var(--muted); font-size: 14px; line-height: 1.6; }
+  .pane-header { margin-bottom: 24px; }
+  .pane-title { font-size: 24px; font-weight: 700; color: #fff; line-height: 1.2; margin-bottom: 6px; }
+  .pane-subtitle { color: var(--muted); font-size: 13px; line-height: 1.6; }
 
   .card {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 28px;
-    margin-bottom: 20px;
+    padding: 24px;
+    margin-bottom: 16px;
     transition: border-color 0.2s;
   }
   .card:hover { border-color: var(--border-hover); }
 
   .card-header {
     display: flex; align-items: center; gap: 10px;
-    margin-bottom: 20px;
+    margin-bottom: 18px;
   }
   .card-icon {
-    width: 32px; height: 32px; border-radius: 8px;
+    width: 30px; height: 30px; border-radius: 8px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 15px;
+    font-size: 14px;
   }
   .icon-json { background: rgba(245,200,66,0.15); }
   .icon-csv  { background: rgba(62,207,142,0.15); }
@@ -139,29 +332,23 @@ HTML = """<!DOCTYPE html>
   .drop-zone {
     border: 1.5px dashed var(--border);
     border-radius: 8px;
-    padding: 36px 24px;
+    padding: 32px 20px;
     text-align: center;
     cursor: pointer;
     transition: all 0.2s;
     position: relative;
   }
-  .drop-zone:hover, .drop-zone.dragover {
-    border-color: var(--accent);
-    background: var(--accent-dim);
-  }
-  .drop-zone input[type=file] {
-    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
-  }
-  .drop-icon { font-size: 28px; margin-bottom: 10px; }
+  .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: var(--accent-dim); }
+  .drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .drop-icon  { font-size: 24px; margin-bottom: 8px; }
   .drop-label { font-size: 13px; color: var(--muted); }
   .drop-label span { color: var(--accent); font-weight: 600; }
-  .drop-ext { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 6px; }
+  .drop-ext   { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 5px; }
 
   .file-selected {
-    display: none;
-    align-items: center; gap: 10px;
+    display: none; align-items: center; gap: 10px;
     background: var(--green-dim); border: 1px solid rgba(62,207,142,0.25);
-    border-radius: 8px; padding: 12px 16px; margin-top: 12px;
+    border-radius: 8px; padding: 11px 14px; margin-top: 10px;
     font-family: var(--mono); font-size: 12px; color: var(--green);
   }
   .file-selected.show { display: flex; }
@@ -169,117 +356,61 @@ HTML = """<!DOCTYPE html>
   .detected-table {
     display: none; align-items: center; gap: 8px;
     background: rgba(90,90,114,0.12); border: 1px solid var(--border-hover);
-    border-radius: 8px; padding: 10px 16px; margin-top: 12px;
+    border-radius: 8px; padding: 9px 14px; margin-top: 10px;
     font-family: var(--mono); font-size: 12px;
   }
   .detected-table.show { display: flex; }
   .detected-label { color: var(--muted); }
   .detected-value { color: var(--accent); font-weight: 600; margin-left: 4px; }
 
-  .replace-section {
-    display: none; margin-top: 16px; padding-top: 16px;
-    border-top: 1px solid var(--border);
-  }
+  .replace-section { display: none; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
   .replace-section.show { display: block; }
   .checkbox-row { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
   .checkbox-row input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
   .checkbox-label { font-size: 13px; color: var(--text); }
-  .new-table-input { display: none; margin-top: 14px; }
+  .new-table-input { display: none; margin-top: 12px; }
   .new-table-input.show { display: block; }
+
   .text-input {
-    width: 100%; background: var(--bg); border: 1.5px solid var(--border);
-    border-radius: 8px; padding: 11px 14px; font-family: var(--mono);
-    font-size: 13px; color: var(--text); outline: none; transition: border-color 0.2s;
+    background: var(--bg); border: 1.5px solid var(--border);
+    border-radius: 8px; padding: 9px 12px; font-family: var(--mono);
+    font-size: 12px; color: var(--text); outline: none; transition: border-color 0.2s;
   }
   .text-input:focus { border-color: var(--accent); }
   .text-input::placeholder { color: var(--muted); }
 
   .btn-submit {
-    width: 100%;
-    background: var(--accent);
-    color: #000;
-    border: none;
-    border-radius: 8px;
-    padding: 15px;
-    font-family: var(--sans);
-    font-size: 15px;
-    font-weight: 700;
-    cursor: pointer;
-    letter-spacing: 0.5px;
-    transition: all 0.2s;
-    margin-top: 8px;
+    width: 100%; background: var(--accent); color: #000; border: none;
+    border-radius: 8px; padding: 14px; font-family: var(--sans);
+    font-size: 14px; font-weight: 700; cursor: pointer; letter-spacing: 0.5px;
+    transition: all 0.2s; margin-top: 8px;
   }
   .btn-submit:hover { background: #ffd84d; transform: translateY(-1px); box-shadow: 0 8px 24px rgba(245,200,66,0.25); }
   .btn-submit:active { transform: translateY(0); }
   .btn-submit:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
-  .alert {
-    padding: 14px 18px; border-radius: 8px;
-    font-size: 13px; margin-bottom: 20px; display: flex; gap: 10px; align-items: flex-start;
-  }
-  .alert-error { background: rgba(224,92,92,0.1); border: 1px solid rgba(224,92,92,0.3); color: #e05c5c; }
+  .alert { padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; display: flex; gap: 10px; align-items: flex-start; }
+  .alert-error   { background: rgba(224,92,92,0.1); border: 1px solid rgba(224,92,92,0.3); color: #e05c5c; }
   .alert-success { background: var(--green-dim); border: 1px solid rgba(62,207,142,0.3); color: var(--green); }
 
   .mapping-preview {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 16px;
-    margin-top: 16px;
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--muted);
-    max-height: 200px;
-    overflow-y: auto;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px; margin-top: 14px;
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    max-height: 180px; overflow-y: auto;
   }
   .mapping-preview .kv { display: flex; gap: 12px; padding: 3px 0; border-bottom: 1px solid #1a1a22; }
   .mapping-preview .kv:last-child { border: none; }
-  .mapping-preview .k { color: var(--accent); min-width: 160px; }
+  .mapping-preview .k { color: var(--accent); min-width: 150px; }
   .mapping-preview .v { color: var(--green); }
   .mapping-preview .arrow { color: #333; }
 
-  .divider { border: none; border-top: 1px solid var(--border); margin: 28px 0; }
-
-  .how-it-works {
-    background: rgba(255,255,255,0.02);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 20px 24px;
-    margin-top: 28px;
-  }
-  .how-title { font-size: 11px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 14px; }
-  .steps { display: flex; gap: 0; }
-  .step { flex: 1; padding: 0 16px 0 0; border-right: 1px solid var(--border); margin-right: 16px; }
-  .step:last-child { border: none; margin: 0; padding: 0; }
-  .step-num { font-family: var(--mono); font-size: 20px; font-weight: 700; color: var(--border-hover); margin-bottom: 4px; }
-  .step-text { font-size: 12px; color: var(--muted); line-height: 1.5; }
-  .step-text strong { color: var(--text); }
-
-  .paste-area {
-    width: 100%; min-height: 160px; resize: vertical;
-    background: var(--bg); border: 1.5px solid var(--border);
-    border-radius: 8px; padding: 14px 16px;
-    font-family: var(--mono); font-size: 12px; color: var(--text);
-    outline: none; transition: border-color 0.2s; line-height: 1.7;
-  }
-  .paste-area:focus { border-color: var(--accent); }
-  .paste-area::placeholder { color: var(--muted); }
-  .pair-count {
-    font-family: var(--mono); font-size: 11px; color: var(--muted);
-    margin-top: 8px; text-align: right;
-  }
-  .pair-count.has-data { color: var(--green); }
-
-  /* ── Tab UI ────────────────────────────────────────────── */
-  .tab-bar {
-    display: flex; align-items: center; gap: 0;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 20px; overflow-x: auto;
-  }
+  /* ── Tab UI ──────────────────────────────────────────────────────────── */
+  .tab-bar { display: flex; align-items: center; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; overflow-x: auto; }
   .tab-btn {
     background: none; border: none; border-bottom: 2px solid transparent;
-    color: var(--muted); font-family: var(--sans); font-size: 13px; font-weight: 500;
-    padding: 10px 18px; cursor: pointer; white-space: nowrap;
+    color: var(--muted); font-family: var(--sans); font-size: 12px; font-weight: 500;
+    padding: 9px 15px; cursor: pointer; white-space: nowrap;
     transition: color 0.2s, border-color 0.2s;
     display: flex; align-items: center; gap: 6px;
   }
@@ -287,14 +418,14 @@ HTML = """<!DOCTYPE html>
   .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
   .tab-btn .tab-close {
     display: inline-flex; align-items: center; justify-content: center;
-    width: 16px; height: 16px; border-radius: 50%; font-size: 11px;
+    width: 15px; height: 15px; border-radius: 50%; font-size: 10px;
     background: transparent; color: var(--muted); cursor: pointer;
     border: none; line-height: 1; transition: background 0.15s, color 0.15s;
   }
   .tab-btn .tab-close:hover { background: var(--red); color: #fff; }
   .tab-add {
     background: none; border: 1px dashed var(--border);
-    color: var(--muted); font-size: 16px; width: 28px; height: 28px;
+    color: var(--muted); font-size: 15px; width: 26px; height: 26px;
     border-radius: 6px; cursor: pointer; display: flex;
     align-items: center; justify-content: center; margin-left: 6px;
     transition: border-color 0.2s, color 0.2s; flex-shrink: 0;
@@ -303,368 +434,450 @@ HTML = """<!DOCTYPE html>
   .tab-pane { display: none; }
   .tab-pane.active { display: block; }
 
-  /* ── Mode Toggle ───────────────────────────────────────── */
-  .mode-bar {
-    display: flex; align-items: center; justify-content: center; gap: 14px;
-    margin-bottom: 24px; padding: 14px 0;
-  }
-  .mode-label {
-    font-family: var(--mono); font-size: 12px; font-weight: 600;
-    letter-spacing: 0.5px; transition: color 0.2s;
-  }
-  .mode-label.active { color: var(--accent); }
-  .mode-label.inactive { color: var(--muted); }
-  .toggle-track {
-    width: 48px; height: 26px; border-radius: 13px;
-    background: var(--border-hover); cursor: pointer;
-    position: relative; transition: background 0.25s;
-    border: 1px solid var(--border);
-  }
-  .toggle-track.le-active { background: var(--accent-dim); border-color: rgba(245,200,66,0.35); }
-  .toggle-knob {
-    width: 20px; height: 20px; border-radius: 50%;
-    background: #fff; position: absolute; top: 2px; left: 3px;
-    transition: transform 0.25s; box-shadow: 0 1px 4px rgba(0,0,0,0.3);
-  }
-  .toggle-track.le-active .toggle-knob { transform: translateX(22px); }
-
-  /* ── LE Panel ─────────────────────────────────────────── */
-  .le-panel { display: none; }
-  .le-panel.show { display: block; }
-  .le-connect-row {
-    display: flex; gap: 10px; align-items: center;
-  }
-  .le-connect-row .text-input { flex: 1; }
-  .btn-connect {
-    background: var(--accent); color: #000; border: none;
-    border-radius: 8px; padding: 11px 20px;
-    font-family: var(--sans); font-size: 13px; font-weight: 700;
-    cursor: pointer; white-space: nowrap; transition: all 0.2s;
-  }
-  .btn-connect:hover { background: #ffd84d; }
-  .btn-connect:disabled { opacity: 0.4; cursor: not-allowed; }
-  .le-status {
-    font-family: var(--mono); font-size: 11px; color: var(--muted);
-    margin-top: 10px;
-  }
-  .le-status.error { color: var(--red); }
-  .le-status.success { color: var(--green); }
-  .le-version-badge {
-    display: inline-flex; align-items: center; gap: 5px;
-    background: var(--accent-dim); color: var(--accent);
-    font-family: var(--mono); font-size: 11px; font-weight: 600;
-    padding: 3px 10px; border-radius: 20px; margin-left: auto;
-  }
-  .le-version-badge .le-ver-label { color: var(--muted); font-weight: 400; }
-  .instance-list {
-    margin-top: 16px; display: flex; flex-direction: column; gap: 6px;
-    max-height: 280px; overflow-y: auto;
-  }
+  /* ── Instance list (LE mode) ─────────────────────────────────────────── */
+  .instance-list { margin-top: 14px; display: flex; flex-direction: column; gap: 5px; max-height: 240px; overflow-y: auto; }
   .instance-item {
     background: var(--bg); border: 1.5px solid var(--border);
-    border-radius: 8px; padding: 10px 16px; cursor: pointer;
+    border-radius: 8px; padding: 9px 14px; cursor: pointer;
     font-family: var(--mono); font-size: 12px; color: var(--text);
     transition: border-color 0.15s, background 0.15s;
     display: flex; align-items: center; gap: 10px;
   }
   .instance-item:hover { border-color: var(--border-hover); background: var(--surface); }
   .instance-item.selected { border-color: var(--accent); background: var(--accent-dim); }
-  .instance-item .inst-icon { color: var(--muted); font-size: 14px; flex-shrink: 0; }
+  .instance-item .inst-icon { color: var(--muted); font-size: 13px; flex-shrink: 0; }
   .instance-item.selected .inst-icon { color: var(--accent); }
   .instance-item .inst-table { color: var(--accent); font-weight: 600; }
   .instance-item .inst-provider { color: var(--muted); font-size: 10px; margin-left: auto; }
 
-  /* ── Ping Utility ───────────────────────────────────────── */
-  .ping-section {
-    margin-top: 14px; padding-top: 14px;
-    border-top: 1px dashed var(--border);
-  }
-  .ping-row {
-    display: flex; gap: 8px; align-items: center;
-  }
-  .ping-row input { flex: 1; }
-  .btn-ping {
-    padding: 7px 18px; border-radius: 8px; border: none;
-    background: var(--surface); color: var(--text);
-    font-family: var(--sans); font-size: 12px; font-weight: 600;
-    cursor: pointer; white-space: nowrap; transition: all 0.2s;
-    border: 1.5px solid var(--border);
-  }
-  .btn-ping:hover { border-color: var(--accent); color: var(--accent); }
-  .btn-ping:disabled { opacity: 0.4; cursor: not-allowed; }
-  .ping-result {
-    font-family: var(--mono); font-size: 11px; margin-top: 8px;
-    padding: 8px 12px; border-radius: 6px; display: none;
-    white-space: pre-wrap; line-height: 1.5;
-  }
-  .ping-result.ok { background: var(--green-dim); color: var(--green); display: block; }
-  .ping-result.fail { background: rgba(224,92,92,0.1); color: var(--red); display: block; }
-  .ping-result.pending { background: var(--surface); color: var(--muted); display: block; }
-
+  /* ── Push button & results ───────────────────────────────────────────── */
   .btn-push {
     width: 100%; background: var(--green); color: #000; border: none;
-    border-radius: 8px; padding: 15px; font-family: var(--sans);
-    font-size: 15px; font-weight: 700; cursor: pointer; letter-spacing: 0.5px;
+    border-radius: 8px; padding: 14px; font-family: var(--sans);
+    font-size: 14px; font-weight: 700; cursor: pointer; letter-spacing: 0.5px;
     transition: all 0.2s; margin-top: 8px; display: none;
   }
   .btn-push:hover { background: #4de6a0; transform: translateY(-1px); box-shadow: 0 8px 24px rgba(62,207,142,0.25); }
   .btn-push:active { transform: translateY(0); }
   .btn-push:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
-
-  .push-results {
-    margin-top: 16px; display: flex; flex-direction: column; gap: 6px;
-  }
+  .push-results { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
   .push-result-item {
-    font-family: var(--mono); font-size: 12px; padding: 8px 14px;
+    font-family: var(--mono); font-size: 12px; padding: 8px 12px;
     border-radius: 6px; display: flex; align-items: center; gap: 8px;
   }
-  .push-result-item.ok { background: var(--green-dim); color: var(--green); border: 1px solid rgba(62,207,142,0.25); }
-  .push-result-item.fail { background: rgba(224,92,92,0.1); color: var(--red); border: 1px solid rgba(224,92,92,0.25); }
+  .push-result-item.ok   { background: var(--green-dim); color: var(--green); border: 1px solid rgba(62,207,142,0.25); }
+  .push-result-item.fail { background: rgba(224,92,92,0.1); color: var(--red);   border: 1px solid rgba(224,92,92,0.25); }
+
+  .paste-area {
+    width: 100%; min-height: 150px; resize: vertical;
+    background: var(--bg); border: 1.5px solid var(--border);
+    border-radius: 8px; padding: 12px 14px;
+    font-family: var(--mono); font-size: 12px; color: var(--text);
+    outline: none; transition: border-color 0.2s; line-height: 1.7;
+  }
+  .paste-area:focus { border-color: var(--accent); }
+  .paste-area::placeholder { color: var(--muted); }
+  .pair-count { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 6px; text-align: right; }
+  .pair-count.has-data { color: var(--green); }
+
+  .how-it-works {
+    background: rgba(255,255,255,0.02); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px 22px; margin-top: 24px;
+  }
+  .how-title { font-size: 11px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; }
+  .steps { display: flex; gap: 0; }
+  .step { flex: 1; padding: 0 14px 0 0; border-right: 1px solid var(--border); margin-right: 14px; }
+  .step:last-child { border: none; margin: 0; padding: 0; }
+  .step-num { font-family: var(--mono); font-size: 18px; font-weight: 700; color: var(--border-hover); margin-bottom: 4px; }
+  .step-text { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .step-text strong { color: var(--text); }
+
+  /* ── connect button (top panel) ─────────────────────────────────────── */
+  .btn-connect {
+    background: var(--accent); color: #000; border: none;
+    border-radius: 8px; padding: 9px 16px;
+    font-family: var(--sans); font-size: 12px; font-weight: 700;
+    cursor: pointer; white-space: nowrap; transition: all 0.2s;
+  }
+  .btn-connect:hover { background: #ffd84d; }
+  .btn-connect:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-ping {
+    padding: 7px 14px; border-radius: 8px; border: 1.5px solid var(--border);
+    background: var(--surface); color: var(--text);
+    font-family: var(--sans); font-size: 11px; font-weight: 600;
+    cursor: pointer; white-space: nowrap; transition: all 0.2s;
+  }
+  .btn-ping:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-ping:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── Digital Twin placeholder ────────────────────────────────────────── */
+  .placeholder-shell {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; min-height: 340px; text-align: center;
+    border: 1.5px dashed var(--border); border-radius: 14px;
+    padding: 48px 32px; gap: 16px;
+    background: linear-gradient(135deg, rgba(245,200,66,0.03) 0%, rgba(62,207,142,0.03) 100%);
+  }
+  .placeholder-icon { font-size: 48px; opacity: 0.55; margin-bottom: 4px; }
+  .placeholder-title { font-size: 20px; font-weight: 700; color: var(--text); }
+  .placeholder-sub { font-size: 13px; color: var(--muted); line-height: 1.7; max-width: 420px; }
+  .coming-soon-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(62,207,142,0.08); border: 1px solid rgba(62,207,142,0.2);
+    color: var(--green); font-family: var(--mono); font-size: 10px;
+    letter-spacing: 2px; text-transform: uppercase;
+    padding: 5px 14px; border-radius: 20px; margin-top: 4px;
+  }
+
 </style>
 </head>
 <body>
-<div class="container">
 
-  <header>
-    <div style="display:flex;align-items:center;justify-content:space-between">
-      <div class="badge">connector tool</div>
-      <div class="badge" style="color:var(--muted);background:rgba(255,255,255,0.04);border-color:var(--border)">v3.2</div>
-    </div>
-    <h1>⇄ Connector JSON Mapping Updater</h1>
-    <p class="subtitle">Upload a connector JSON, then paste your key→value columns copied from Excel.<br>The tool replaces the mapping inside config — nothing else changes.</p>
-  </header>
-
-  {alert_html}
-
-  <!-- ── Mode Toggle ──────────────────────────────────────── -->
-  <div class="mode-bar">
-    <span class="mode-label active" id="labelManual">Manual</span>
-    <div class="toggle-track" id="modeToggle" title="Switch mode">
-      <div class="toggle-knob"></div>
-    </div>
-    <span class="mode-label inactive" id="labelLE">Litmus Edge</span>
+<!-- ═══════════════════════════════════════════════════════════════════════
+     SIDEBAR
+════════════════════════════════════════════════════════════════════════ -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="sidebar-logo-line1">Litmus</div>
+    <div class="sidebar-logo-line2">Deployment Assist</div>
   </div>
 
-  <form method="POST" action="/update" enctype="multipart/form-data" id="mainForm">
+  <nav class="sidebar-nav">
+    <div class="nav-section-label">Applications</div>
 
-    <!-- ── Manual Mode: JSON Upload Card ───────────────────────── -->
-    <div class="card" id="manualCard">
-      <div class="card-header">
-        <div class="card-icon icon-json">📄</div>
-        <div>
-          <div class="card-title">Connector JSON</div>
-          <div class="card-desc">Your connector configuration file (shared across all tabs)</div>
-        </div>
-      </div>
-      <div class="drop-zone" id="jsonZone">
-        <input type="file" name="json_file" id="jsonFile" accept=".json">
-        <div class="drop-icon">{ }</div>
-        <div class="drop-label">Drop JSON file or <span>browse</span></div>
-        <div class="drop-ext">.json</div>
-      </div>
-      <div class="file-selected" id="jsonSelected">✓ <span id="jsonName"></span></div>
-      <div class="detected-table" id="detectedTableWrap">
-        <span class="detected-label">Detected table →</span>
-        <span class="detected-value" id="detectedTableVal"></span>
+    <div class="nav-item active" data-app="connector" onclick="selectApp('connector', this)">
+      <div class="nav-item-icon">⇄</div>
+      <div class="nav-item-text">
+        <div class="nav-item-title">Integration Connector Assist</div>
+        <div class="nav-item-sub">JSON mapping updater</div>
       </div>
     </div>
 
-    <!-- ── Litmus Edge Mode: Connection Panel ──────────────────── -->
-    <div class="card le-panel" id="leCard">
-      <div class="card-header">
-        <div class="card-icon icon-json" style="background:rgba(245,200,66,0.15)">🔗</div>
-        <div>
-          <div class="card-title">Connect to Litmus Edge</div>
-          <div class="card-desc">Enter the IP and API token of your Litmus Edge device</div>
-        </div>
-        <span class="le-version-badge" id="leVersionBadge" style="display:none">
-          <span class="le-ver-label">LE</span>
-          <span id="leVersionValue"></span>
-        </span>
+    <div class="nav-item" data-app="dtwin" onclick="selectApp('dtwin', this)">
+      <div class="nav-item-icon">⬡</div>
+      <div class="nav-item-text">
+        <div class="nav-item-title">Digital Twin Model Assist</div>
+        <div class="nav-item-sub">Model automation</div>
       </div>
-      <div class="le-connect-row">
-        <input type="text" id="leIpInput" class="text-input" placeholder="e.g. 192.168.1.100" autocomplete="off" style="flex:2">
-        <input type="text" id="leTokenInput" class="text-input" placeholder="API token" autocomplete="off" style="flex:3">
-        <button type="button" class="btn-connect" id="leConnectBtn">Connect</button>
-      </div>
-      <div class="le-status" id="leStatus"></div>
-      <div class="instance-list" id="instanceList" style="display:none"></div>
-      <div class="ping-section">
-        <div class="ping-row">
-          <input type="text" id="pingIpInput" class="text-input" placeholder="IP to ping (e.g. 192.168.1.100)" autocomplete="off">
-          <button type="button" class="btn-ping" id="pingBtn">Ping</button>
+    </div>
+  </nav>
+
+  <div class="sidebar-footer">v4.0.0 &nbsp;·&nbsp; localhost:8081</div>
+</aside>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     MAIN AREA
+════════════════════════════════════════════════════════════════════════ -->
+<div class="main-area">
+
+  <!-- ── Top panel: shared Litmus Edge connection ─────────────────────── -->
+  <div class="top-panel">
+    <div class="top-header-row">
+      <span class="top-app-title" id="topAppTitle">Integration Connector Assist</span>
+      <div class="mode-bar">
+        <span class="mode-label active"  id="labelManual">Manual</span>
+        <div class="toggle-track" id="modeToggle" title="Switch mode">
+          <div class="toggle-knob"></div>
         </div>
-        <div class="ping-result" id="pingResult"></div>
+        <span class="mode-label inactive" id="labelLE">Litmus Edge</span>
       </div>
     </div>
 
-    <input type="hidden" name="le_instance_json" id="leInstanceJson" value="">
+    <!-- LE connection row — hidden in Manual mode -->
+    <div class="le-row le-row-hidden" id="leRow">
+      <input type="text" id="leIpInput"    class="text-input" placeholder="e.g. 192.168.1.100" autocomplete="off" style="width:160px;">
+      <input type="text" id="leTokenInput" class="text-input" placeholder="API token"           autocomplete="off" style="width:200px;">
+      <button type="button" class="btn-connect" id="leConnectBtn">Connect</button>
+      <span class="le-version-badge" id="leVersionBadge" style="display:none">
+        <span class="le-ver-label">LE</span>
+        <span id="leVersionValue"></span>
+      </span>
+      <span class="le-status" id="leStatus"></span>
 
-    <!-- ── Tabbed Mapping Cards ────────────────────────────────── -->
-    <div class="card" id="tabCard">
-      <div class="card-header">
-        <div class="card-icon icon-csv">⇄</div>
-        <div>
-          <div class="card-title">Mapping Tabs</div>
-          <div class="card-desc">Each tab produces a separate output file. Add tabs with <strong>+</strong> to create multiple connector JSONs.</div>
-        </div>
+      <div class="ping-separator"></div>
+      <input type="text" id="pingIpInput" class="text-input" placeholder="IP to ping" autocomplete="off" style="width:140px;">
+      <button type="button" class="btn-ping" id="pingBtn">Ping</button>
+      <span class="ping-result-inline" id="pingResult"></span>
+    </div>
+  </div>
+
+  <!-- ── Bottom panel: per-app dynamic content ────────────────────────── -->
+  <div class="bottom-panel">
+
+    <!-- ════════════════════════════════════════════════════════════════
+         APP 1 · Integration Connector Assist
+    ═════════════════════════════════════════════════════════════════ -->
+    <div class="app-pane active" id="pane-connector">
+
+      {alert_html}
+
+      <div class="pane-header">
+        <div class="badge">connector tool</div>
+        <div class="pane-title">⇄ Connector JSON Mapping Updater</div>
+        <p class="pane-subtitle">Upload a connector JSON, then paste your key→value columns copied from Excel.<br>The tool replaces the mapping inside config — nothing else changes.</p>
       </div>
 
-      <div class="tab-bar" id="tabBar">
-        <button type="button" class="tab-btn active" data-tab="0">Tab 1</button>
-        <button type="button" class="tab-add" id="addTabBtn" title="Add tab">+</button>
-      </div>
+      <form method="POST" action="/update" enctype="multipart/form-data" id="mainForm">
 
-      <div id="tabPanes">
-        <div class="tab-pane active" data-tab="0">
-          <div class="replace-section">
-            <label class="checkbox-row">
-              <input type="checkbox" class="replaceCheck" name="replace_table_0" value="1">
-              <span class="checkbox-label">Replace table name in output</span>
-            </label>
-            <div class="new-table-input">
-              <input type="text" name="new_table_0" class="text-input newTableInput"
-                     placeholder="New table name…" autocomplete="off">
+        <!-- Manual: JSON upload card -->
+        <div class="card" id="manualCard">
+          <div class="card-header">
+            <div class="card-icon icon-json">📄</div>
+            <div>
+              <div class="card-title">Connector JSON</div>
+              <div class="card-desc">Your connector configuration file (shared across all tabs)</div>
             </div>
           </div>
-          <div style="margin-top:16px">
-            <textarea
-              name="mapping_text_0"
-              class="paste-area mappingArea"
-              placeholder="Paste your Excel cells here…&#10;&#10;plant&#9;{{.plant}}&#10;material&#9;{{.material}}&#10;movetype&#9;{{.movetype}}"
-              spellcheck="false"
-            ></textarea>
-            <div class="pair-count"></div>
-            <div class="mapping-preview" style="display:none"></div>
+          <div class="drop-zone" id="jsonZone">
+            <input type="file" name="json_file" id="jsonFile" accept=".json">
+            <div class="drop-icon">{ }</div>
+            <div class="drop-label">Drop JSON file or <span>browse</span></div>
+            <div class="drop-ext">.json</div>
+          </div>
+          <div class="file-selected" id="jsonSelected">✓ <span id="jsonName"></span></div>
+          <div class="detected-table" id="detectedTableWrap">
+            <span class="detected-label">Detected table →</span>
+            <span class="detected-value" id="detectedTableVal"></span>
+          </div>
+        </div>
+
+        <!-- LE mode: instance list (shown inside bottom panel when LE active) -->
+        <div class="card" id="leInstanceCard" style="display:none">
+          <div class="card-header">
+            <div class="card-icon icon-json" style="background:rgba(245,200,66,0.15)">🔗</div>
+            <div>
+              <div class="card-title">Select Connector Instance</div>
+              <div class="card-desc">Pick an instance from your connected Litmus Edge device</div>
+            </div>
+          </div>
+          <div class="instance-list" id="instanceList"></div>
+        </div>
+
+        <input type="hidden" name="le_instance_json" id="leInstanceJson" value="">
+
+        <!-- Tabbed mapping cards -->
+        <div class="card" id="tabCard">
+          <div class="card-header">
+            <div class="card-icon icon-csv">⇄</div>
+            <div>
+              <div class="card-title">Mapping Tabs</div>
+              <div class="card-desc">Each tab produces a separate output file. Add tabs with <strong>+</strong>.</div>
+            </div>
+          </div>
+
+          <div class="tab-bar" id="tabBar">
+            <button type="button" class="tab-btn active" data-tab="0">Tab 1</button>
+            <button type="button" class="tab-add" id="addTabBtn" title="Add tab">+</button>
+          </div>
+
+          <div id="tabPanes">
+            <div class="tab-pane active" data-tab="0">
+              <div class="replace-section">
+                <label class="checkbox-row">
+                  <input type="checkbox" class="replaceCheck" name="replace_table_0" value="1">
+                  <span class="checkbox-label">Replace table name in output</span>
+                </label>
+                <div class="new-table-input">
+                  <input type="text" name="new_table_0" class="text-input newTableInput"
+                         placeholder="New table name…" autocomplete="off" style="width:100%">
+                </div>
+              </div>
+              <div style="margin-top:14px">
+                <textarea
+                  name="mapping_text_0"
+                  class="paste-area mappingArea"
+                  placeholder="Paste your Excel cells here…&#10;&#10;plant&#9;{{.plant}}&#10;material&#9;{{.material}}&#10;movetype&#9;{{.movetype}}"
+                  spellcheck="false"
+                ></textarea>
+                <div class="pair-count"></div>
+                <div class="mapping-preview" style="display:none"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <input type="hidden" name="detected_table"  id="detectedTableInput" value="">
+        <input type="hidden" name="tab_count"        id="tabCountInput"      value="1">
+        <input type="hidden" name="le_ip"            id="leIpHidden"         value="">
+        <input type="hidden" name="le_token"         id="leTokenHidden"      value="">
+
+        <button type="submit" class="btn-submit" id="submitBtn" disabled>
+          Update Mapping &amp; Download
+        </button>
+        <button type="button" class="btn-push" id="pushBtn" disabled>
+          Push to Litmus Edge
+        </button>
+        <div class="push-results" id="pushResults" style="display:none"></div>
+      </form>
+
+      <div class="how-it-works">
+        <div class="how-title">How it works</div>
+        <div class="steps" id="howSteps">
+          <div class="step">
+            <div class="step-num">01</div>
+            <div class="step-text"><strong>Upload</strong> your connector JSON</div>
+          </div>
+          <div class="step">
+            <div class="step-num">02</div>
+            <div class="step-text"><strong>Add tabs</strong> for each connector. <strong>Paste</strong> key→value columns and set table names</div>
+          </div>
+          <div class="step">
+            <div class="step-num">03</div>
+            <div class="step-text"><strong>Download</strong> one JSON with all tabs as separate instances</div>
           </div>
         </div>
       </div>
     </div>
+    <!-- /pane-connector -->
 
-    <input type="hidden" name="detected_table" id="detectedTableInput" value="">
-    <input type="hidden" name="tab_count" id="tabCountInput" value="1">
-    <input type="hidden" name="le_ip" id="leIpHidden" value="">
-    <input type="hidden" name="le_token" id="leTokenHidden" value="">
 
-    <button type="submit" class="btn-submit" id="submitBtn" disabled>
-      Update Mapping &amp; Download
-    </button>
-    <button type="button" class="btn-push" id="pushBtn" disabled>
-      Push to Litmus Edge
-    </button>
-    <div class="push-results" id="pushResults" style="display:none"></div>
-  </form>
-
-  <div class="how-it-works">
-    <div class="how-title">How it works</div>
-    <div class="steps" id="howSteps">
-      <div class="step">
-        <div class="step-num">01</div>
-        <div class="step-text"><strong>Upload</strong> your connector JSON</div>
+    <!-- ════════════════════════════════════════════════════════════════
+         APP 2 · Digital Twin Model Assist  (placeholder)
+    ═════════════════════════════════════════════════════════════════ -->
+    <div class="app-pane" id="pane-dtwin">
+      <div class="pane-header">
+        <div class="badge" style="background:rgba(62,207,142,0.08);border-color:rgba(62,207,142,0.2);color:var(--green)">digital twin</div>
+        <div class="pane-title">⬡ Digital Twin Model Assist</div>
+        <p class="pane-subtitle">Automate the deployment and configuration of Digital Twin models on Litmus Edge.</p>
       </div>
-      <div class="step">
-        <div class="step-num">02</div>
-        <div class="step-text"><strong>Add tabs</strong> for each connector. <strong>Paste</strong> key→value columns and set table names</div>
-      </div>
-      <div class="step">
-        <div class="step-num">03</div>
-        <div class="step-text"><strong>Download</strong> one JSON with all tabs as separate instances</div>
+
+      <div class="placeholder-shell">
+        <div class="placeholder-icon">⬡</div>
+        <div class="placeholder-title">Coming Soon</div>
+        <div class="placeholder-sub">
+          The Digital Twin Model Assist tool is currently under development.<br>
+          It will let you automate model deployment, tag binding,<br>and configuration push directly to Litmus Edge devices.
+        </div>
+        <div class="coming-soon-badge">
+          <span>In Development</span>
+        </div>
       </div>
     </div>
-  </div>
+    <!-- /pane-dtwin -->
 
+  </div>
+  <!-- /bottom-panel -->
 </div>
+<!-- /main-area -->
 
 <script>
-  const jsonFile   = document.getElementById('jsonFile');
-  const jsonZone   = document.getElementById('jsonZone');
-  const submitBtn  = document.getElementById('submitBtn');
-  const pushBtn    = document.getElementById('pushBtn');
-  let tabCounter   = 1;   // total tabs ever created (for unique IDs)
-  let detectedTable = '';
-  let currentMode  = 'manual';  // 'manual' or 'le'
-  let leInstances  = [];        // fetched instances from LE
-  let selectedInstanceIdx = -1; // which instance is selected
+  // ══════════════════════════════════════════════════════════════════════════
+  //  SIDEBAR NAVIGATION
+  // ══════════════════════════════════════════════════════════════════════════
+  const APP_TITLES = {
+    connector: 'Integration Connector Assist',
+    dtwin:     'Digital Twin Model Assist',
+  };
 
-  // ── Mode Toggle ──────────────────────────────────────────────────────────
+  function selectApp(appId, navEl) {
+    // Update sidebar active state
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    navEl.classList.add('active');
+    // Swap pane
+    document.querySelectorAll('.app-pane').forEach(p => p.classList.remove('active'));
+    const pane = document.getElementById('pane-' + appId);
+    if (pane) pane.classList.add('active');
+    // Update top bar title
+    document.getElementById('topAppTitle').textContent = APP_TITLES[appId] || '';
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  MODE TOGGLE  (Manual ↔ Litmus Edge)
+  // ══════════════════════════════════════════════════════════════════════════
+  const submitBtn = document.getElementById('submitBtn');
+  const pushBtn   = document.getElementById('pushBtn');
+  const jsonFile  = document.getElementById('jsonFile');
+  let currentMode = 'manual';
+  let leInstances = [];
+  let selectedInstanceIdx = -1;
+  let detectedTable = '';
+  let tabCounter = 1;
+
+  const manualSteps =
+    '<div class="step"><div class="step-num">01</div><div class="step-text"><strong>Upload</strong> your connector JSON</div></div>' +
+    '<div class="step"><div class="step-num">02</div><div class="step-text"><strong>Add tabs</strong> for each connector. <strong>Paste</strong> key\u2192value columns and set table names</div></div>' +
+    '<div class="step"><div class="step-num">03</div><div class="step-text"><strong>Download</strong> one JSON with all tabs as separate instances</div></div>';
+  const leSteps =
+    '<div class="step"><div class="step-num">01</div><div class="step-text"><strong>Connect</strong> to your Litmus Edge device using IP &amp; API token</div></div>' +
+    '<div class="step"><div class="step-num">02</div><div class="step-text"><strong>Select</strong> a connector instance, then <strong>add tabs</strong> with new mappings &amp; table names</div></div>' +
+    '<div class="step"><div class="step-num">03</div><div class="step-text"><strong>Push</strong> updated instances directly back to Litmus Edge</div></div>';
+
   document.getElementById('modeToggle').addEventListener('click', function() {
     const howSteps = document.getElementById('howSteps');
-    const manualSteps =
-      '<div class="step"><div class="step-num">01</div><div class="step-text"><strong>Upload</strong> your connector JSON</div></div>' +
-      '<div class="step"><div class="step-num">02</div><div class="step-text"><strong>Add tabs</strong> for each connector. <strong>Paste</strong> key\u2192value columns and set table names</div></div>' +
-      '<div class="step"><div class="step-num">03</div><div class="step-text"><strong>Download</strong> one JSON with all tabs as separate instances</div></div>';
-    const leSteps =
-      '<div class="step"><div class="step-num">01</div><div class="step-text"><strong>Connect</strong> to your Litmus Edge device using IP &amp; API token</div></div>' +
-      '<div class="step"><div class="step-num">02</div><div class="step-text"><strong>Select</strong> a connector instance, then <strong>add tabs</strong> with new mappings &amp; table names</div></div>' +
-      '<div class="step"><div class="step-num">03</div><div class="step-text"><strong>Push</strong> updated instances directly back to Litmus Edge</div></div>';
     if (currentMode === 'manual') {
       currentMode = 'le';
       this.classList.add('le-active');
       document.getElementById('labelManual').className = 'mode-label inactive';
-      document.getElementById('labelLE').className = 'mode-label active';
-      document.getElementById('manualCard').style.display = 'none';
-      document.getElementById('leCard').classList.add('show');
+      document.getElementById('labelLE').className     = 'mode-label active';
+      // Show LE row in top panel
+      document.getElementById('leRow').classList.remove('le-row-hidden');
+      // In bottom panel: hide manual card, show instance selector
+      document.getElementById('manualCard').style.display      = 'none';
+      document.getElementById('leInstanceCard').style.display  = 'block';
       submitBtn.style.display = 'none';
-      pushBtn.style.display = 'block';
-      howSteps.innerHTML = leSteps;
+      pushBtn.style.display   = 'block';
+      if (howSteps) howSteps.innerHTML = leSteps;
     } else {
       currentMode = 'manual';
       this.classList.remove('le-active');
       document.getElementById('labelManual').className = 'mode-label active';
-      document.getElementById('labelLE').className = 'mode-label inactive';
-      document.getElementById('manualCard').style.display = 'block';
-      document.getElementById('leCard').classList.remove('show');
+      document.getElementById('labelLE').className     = 'mode-label inactive';
+      document.getElementById('leRow').classList.add('le-row-hidden');
+      document.getElementById('manualCard').style.display      = 'block';
+      document.getElementById('leInstanceCard').style.display  = 'none';
       submitBtn.style.display = 'block';
-      pushBtn.style.display = 'none';
+      pushBtn.style.display   = 'none';
       document.getElementById('pushResults').style.display = 'none';
       document.getElementById('leVersionBadge').style.display = 'none';
-      howSteps.innerHTML = manualSteps;
+      if (howSteps) howSteps.innerHTML = manualSteps;
     }
     checkReady();
   });
 
-  // ── Ping Utility ─────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  //  PING (top panel)
+  // ══════════════════════════════════════════════════════════════════════════
   document.getElementById('pingBtn').addEventListener('click', function() {
-    const ip = document.getElementById('pingIpInput').value.trim() || document.getElementById('leIpInput').value.trim();
-    if (!ip) { return; }
+    const ip = document.getElementById('pingIpInput').value.trim()
+             || document.getElementById('leIpInput').value.trim();
+    if (!ip) return;
     document.getElementById('pingIpInput').value = ip;
     const res = document.getElementById('pingResult');
     const btn = this;
-    btn.disabled = true;
-    btn.textContent = 'Pinging\\u2026';
-    res.className = 'ping-result pending';
-    res.textContent = 'Pinging ' + ip + '\\u2026';
+    btn.disabled = true; btn.textContent = 'Pinging\u2026';
+    res.className = 'ping-result-inline pending';
+    res.textContent = 'Pinging\u2026';
     fetch('/api/ping?ip=' + encodeURIComponent(ip))
       .then(r => r.json())
       .then(data => {
         if (data.reachable) {
-          res.className = 'ping-result ok';
-          res.textContent = '\\u2713 ' + ip + ' is reachable\\n' + data.detail;
+          res.className = 'ping-result-inline ok';
+          res.textContent = '\u2713 ' + ip + ' reachable';
         } else {
-          res.className = 'ping-result fail';
-          res.textContent = '\\u2717 ' + ip + ' is not reachable\\n' + data.detail;
+          res.className = 'ping-result-inline fail';
+          res.textContent = '\u2717 ' + ip + ' unreachable';
         }
       })
       .catch(err => {
-        res.className = 'ping-result fail';
-        res.textContent = '\\u2717 Ping failed: ' + err.message;
+        res.className = 'ping-result-inline fail';
+        res.textContent = '\u2717 ' + err.message;
       })
       .finally(() => { btn.disabled = false; btn.textContent = 'Ping'; });
   });
 
-  // ── Litmus Edge: Connect + fetch instances ───────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  //  LITMUS EDGE — Connect & fetch instances
+  // ══════════════════════════════════════════════════════════════════════════
   document.getElementById('leConnectBtn').addEventListener('click', function() {
-    const ip = document.getElementById('leIpInput').value.trim();
+    const ip    = document.getElementById('leIpInput').value.trim();
     const token = document.getElementById('leTokenInput').value.trim();
-    if (!ip) { document.getElementById('leStatus').textContent = 'Please enter an IP address'; document.getElementById('leStatus').className = 'le-status error'; return; }
-    if (!token) { document.getElementById('leStatus').textContent = 'Please enter an API token'; document.getElementById('leStatus').className = 'le-status error'; return; }
     const status = document.getElementById('leStatus');
+    if (!ip)    { status.textContent = 'Please enter an IP address'; status.className = 'le-status error'; return; }
+    if (!token) { status.textContent = 'Please enter an API token';  status.className = 'le-status error'; return; }
     const btn = this;
-    btn.disabled = true;
-    btn.textContent = 'Connecting\u2026';
-    status.textContent = 'Fetching instances from ' + ip + '\u2026';
-    status.className = 'le-status';
-    document.getElementById('instanceList').style.display = 'none';
+    btn.disabled = true; btn.textContent = 'Connecting\u2026';
+    status.textContent = 'Fetching instances\u2026'; status.className = 'le-status';
 
     fetch('/api/instances?ip=' + encodeURIComponent(ip) + '&token=' + encodeURIComponent(token))
       .then(r => {
@@ -690,8 +903,7 @@ HTML = """<!DOCTYPE html>
           .catch(() => {});
       })
       .catch(err => {
-        status.textContent = 'Error: ' + err.message;
-        status.className = 'le-status error';
+        status.textContent = 'Error: ' + err.message; status.className = 'le-status error';
         leInstances = [];
       })
       .finally(() => { btn.disabled = false; btn.textContent = 'Connect'; });
@@ -699,7 +911,6 @@ HTML = """<!DOCTYPE html>
 
   function renderInstanceList(instances) {
     const list = document.getElementById('instanceList');
-    list.style.display = 'flex';
     list.innerHTML = '';
     instances.forEach((inst, i) => {
       const div = document.createElement('div');
@@ -722,9 +933,7 @@ HTML = """<!DOCTYPE html>
       el.querySelector('.inst-icon').textContent = (i === idx) ? '\u25cf' : '\u25cb';
     });
     const inst = leInstances[idx];
-    // Store the full original instance as JSON for the form
     document.getElementById('leInstanceJson').value = JSON.stringify(inst._original);
-    // Detect table for replace section
     const tbl = inst._tableName || '';
     if (tbl) {
       detectedTable = tbl;
@@ -734,19 +943,16 @@ HTML = """<!DOCTYPE html>
     checkReady();
   }
 
-  // ── Push to Litmus Edge ───────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  //  PUSH TO LITMUS EDGE
+  // ══════════════════════════════════════════════════════════════════════════
   pushBtn.addEventListener('click', function() {
-    // Sync hidden fields
-    document.getElementById('leIpHidden').value = document.getElementById('leIpInput').value.trim();
+    document.getElementById('leIpHidden').value    = document.getElementById('leIpInput').value.trim();
     document.getElementById('leTokenHidden').value = document.getElementById('leTokenInput').value.trim();
-    const form = document.getElementById('mainForm');
-    const formData = new FormData(form);
-    pushBtn.disabled = true;
-    pushBtn.textContent = 'Pushing\u2026';
+    const formData = new FormData(document.getElementById('mainForm'));
+    pushBtn.disabled = true; pushBtn.textContent = 'Pushing\u2026';
     const resultsDiv = document.getElementById('pushResults');
-    resultsDiv.style.display = 'none';
-    resultsDiv.innerHTML = '';
-
+    resultsDiv.style.display = 'none'; resultsDiv.innerHTML = '';
     fetch('/api/push', { method: 'POST', body: formData })
       .then(r => r.json())
       .then(data => {
@@ -775,42 +981,40 @@ HTML = """<!DOCTYPE html>
       .finally(() => { pushBtn.disabled = false; pushBtn.textContent = 'Push to Litmus Edge'; });
   });
 
-  // ── Check if form is ready to submit ─────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  //  FORM READINESS CHECK
+  // ══════════════════════════════════════════════════════════════════════════
   function checkReady() {
-    // Source check: manual needs file, LE needs selected instance
-    let hasSource = false;
-    if (currentMode === 'manual') {
-      hasSource = jsonFile.files.length > 0;
-    } else {
-      hasSource = selectedInstanceIdx >= 0;
-    }
-    if (!hasSource) { submitBtn.disabled = true; return; }
-    // At least one tab must have pasted mapping data
+    let hasSource = (currentMode === 'manual')
+      ? jsonFile.files.length > 0
+      : selectedInstanceIdx >= 0;
+    if (!hasSource) { submitBtn.disabled = true; pushBtn.disabled = true; return; }
     const areas = document.querySelectorAll('.mappingArea');
     let anyMapping = false;
     areas.forEach(a => { if (a.value.trim()) anyMapping = true; });
     if (currentMode === 'manual') {
       submitBtn.disabled = !anyMapping;
-      pushBtn.disabled = true;
+      pushBtn.disabled   = true;
     } else {
       submitBtn.disabled = true;
-      pushBtn.disabled = !anyMapping;
+      pushBtn.disabled   = !anyMapping;
     }
-    // Keep hidden tab_count in sync
-    document.getElementById('tabCountInput').value = document.querySelectorAll('.tab-pane').length;
-    // Sync LE credentials into hidden fields
-    document.getElementById('leIpHidden').value = document.getElementById('leIpInput').value.trim();
-    document.getElementById('leTokenHidden').value = document.getElementById('leTokenInput').value.trim();
+    document.getElementById('tabCountInput').value   = document.querySelectorAll('.tab-pane').length;
+    document.getElementById('leIpHidden').value      = document.getElementById('leIpInput').value.trim();
+    document.getElementById('leTokenHidden').value   = document.getElementById('leTokenInput').value.trim();
   }
 
-  // ── JSON upload: show filename + detect table ────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  //  JSON UPLOAD
+  // ══════════════════════════════════════════════════════════════════════════
   function handleJsonUpload() {
     if (!jsonFile.files.length) return;
     document.getElementById('jsonSelected').classList.add('show');
     document.getElementById('jsonName').textContent = jsonFile.files[0].name;
-    jsonZone.querySelector('.drop-icon').textContent = '\\u2713';
-    jsonZone.querySelector('.drop-label').innerHTML = 'File loaded: <span>' + jsonFile.files[0].name + '</span>';
-    jsonZone.querySelector('.drop-ext').textContent = '';
+    const zone = document.getElementById('jsonZone');
+    zone.querySelector('.drop-icon').textContent = '\u2713';
+    zone.querySelector('.drop-label').innerHTML = 'File loaded: <span>' + jsonFile.files[0].name + '</span>';
+    zone.querySelector('.drop-ext').textContent  = '';
     const reader = new FileReader();
     reader.onload = (e) => {
       const wrap = document.getElementById('detectedTableWrap');
@@ -819,48 +1023,41 @@ HTML = """<!DOCTYPE html>
         const tbl = findTableInJson(parsed);
         if (tbl) {
           detectedTable = tbl;
-          document.getElementById('detectedTableVal').textContent = tbl;
-          document.getElementById('detectedTableInput').value = tbl;
+          document.getElementById('detectedTableVal').textContent   = tbl;
+          document.getElementById('detectedTableInput').value       = tbl;
           wrap.classList.add('show');
-          // Show replace sections in all tabs
           document.querySelectorAll('.replace-section').forEach(s => s.classList.add('show'));
         } else {
           detectedTable = '';
           wrap.classList.remove('show');
           document.querySelectorAll('.replace-section').forEach(s => s.classList.remove('show'));
         }
-      } catch(err) {
-        console.error('JSON parse error:', err);
-        detectedTable = '';
-        wrap.classList.remove('show');
-      }
+      } catch(err) { detectedTable = ''; }
     };
-    reader.onerror = () => console.error('FileReader error');
     reader.readAsText(jsonFile.files[0]);
     checkReady();
   }
   jsonFile.addEventListener('change', handleJsonUpload);
 
-  // ── Drag and drop (JSON zone) ────────────────────────────────────────────
-  jsonZone.addEventListener('dragover', e => { e.preventDefault(); jsonZone.classList.add('dragover'); });
+  const jsonZone = document.getElementById('jsonZone');
+  jsonZone.addEventListener('dragover',  e => { e.preventDefault(); jsonZone.classList.add('dragover'); });
   jsonZone.addEventListener('dragleave', () => jsonZone.classList.remove('dragover'));
   jsonZone.addEventListener('drop', e => {
-    e.preventDefault();
-    jsonZone.classList.remove('dragover');
+    e.preventDefault(); jsonZone.classList.remove('dragover');
     const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
     if (!file) return;
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    jsonFile.files = dt.files;
+    const dt = new DataTransfer(); dt.items.add(file); jsonFile.files = dt.files;
     handleJsonUpload();
   });
 
-  // ── Paste parsing helpers ────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  //  PASTE HELPERS
+  // ══════════════════════════════════════════════════════════════════════════
   function parsePasted(text) {
     const pairs = [];
     for (const line of text.split(/\\r?\\n/)) {
       const delim = line.includes('\\t') ? '\\t' : ',';
-      const idx = line.indexOf(delim);
+      const idx   = line.indexOf(delim);
       if (idx === -1) continue;
       const k = line.slice(0, idx).trim();
       const v = line.slice(idx + 1).trim();
@@ -878,39 +1075,37 @@ HTML = """<!DOCTYPE html>
     const pairs   = parsePasted(area.value);
     if (!pairs.length) {
       preview.style.display = 'none';
-      counter.textContent = '';
-      counter.className = 'pair-count';
+      counter.textContent   = '';
+      counter.className     = 'pair-count';
       return;
     }
     counter.textContent = pairs.length + ' pair' + (pairs.length !== 1 ? 's' : '') + ' detected';
-    counter.className = 'pair-count has-data';
+    counter.className   = 'pair-count has-data';
     preview.style.display = 'block';
     preview.innerHTML = pairs.map(([k, v]) =>
       '<div class="kv"><span class="k">' + escHtml(k) + '</span>' +
-      '<span class="arrow">\\u2192</span><span class="v">' + escHtml(v) + '</span></div>'
+      '<span class="arrow">\u2192</span><span class="v">' + escHtml(v) + '</span></div>'
     ).join('');
   }
 
-  // ── Tab management ───────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  //  TAB MANAGEMENT
+  // ══════════════════════════════════════════════════════════════════════════
   function activateTab(idx) {
     document.querySelectorAll('.tab-btn[data-tab]').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-    const btn = document.querySelector('.tab-btn[data-tab="' + idx + '"]');
+    const btn  = document.querySelector('.tab-btn[data-tab="' + idx + '"]');
     const pane = document.querySelector('.tab-pane[data-tab="' + idx + '"]');
-    if (btn) btn.classList.add('active');
+    if (btn)  btn.classList.add('active');
     if (pane) pane.classList.add('active');
   }
 
   function renumberTabLabels() {
-    const btns = document.querySelectorAll('.tab-btn[data-tab]');
-    btns.forEach((b, i) => {
-      const closeBtn = b.querySelector('.tab-close');
-      b.childNodes[0].textContent = 'Tab ' + (i + 1) + ' ';
-    });
-    // Re-index form field names so backend gets 0-based sequential indices
+    const btns  = document.querySelectorAll('.tab-btn[data-tab]');
     const panes = document.querySelectorAll('.tab-pane');
+    btns.forEach((b, i) => { b.childNodes[0].textContent = 'Tab ' + (i + 1) + ' '; });
     panes.forEach((p, i) => {
-      p.querySelector('.replaceCheck').name  = 'replace_table_' + i;
+      p.querySelector('.replaceCheck').name   = 'replace_table_' + i;
       p.querySelector('.newTableInput').name  = 'new_table_' + i;
       p.querySelector('.mappingArea').name    = 'mapping_text_' + i;
     });
@@ -918,67 +1113,50 @@ HTML = """<!DOCTYPE html>
   }
 
   function addTab() {
-    const idx = tabCounter++;
-    const tabBar = document.getElementById('tabBar');
-    const panes  = document.getElementById('tabPanes');
+    const idx       = tabCounter++;
+    const tabBar    = document.getElementById('tabBar');
+    const panes     = document.getElementById('tabPanes');
     const paneCount = document.querySelectorAll('.tab-pane').length;
 
-    // Tab button
     const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'tab-btn';
+    btn.type = 'button'; btn.className = 'tab-btn';
     btn.setAttribute('data-tab', idx);
-    btn.innerHTML = 'Tab ' + (paneCount + 1) + ' <button type="button" class="tab-close" title="Close tab">\\u00d7</button>';
-    btn.addEventListener('click', (e) => {
-      if (e.target.classList.contains('tab-close')) return;
-      activateTab(idx);
-    });
+    btn.innerHTML = 'Tab ' + (paneCount + 1) + ' <button type="button" class="tab-close" title="Close tab">\u00d7</button>';
+    btn.addEventListener('click', (e) => { if (e.target.classList.contains('tab-close')) return; activateTab(idx); });
     btn.querySelector('.tab-close').addEventListener('click', () => removeTab(idx));
     tabBar.insertBefore(btn, document.getElementById('addTabBtn'));
 
-    // Tab pane
     const pane = document.createElement('div');
-    pane.className = 'tab-pane';
-    pane.setAttribute('data-tab', idx);
+    pane.className = 'tab-pane'; pane.setAttribute('data-tab', idx);
     const showReplace = detectedTable ? ' show' : '';
     pane.innerHTML =
       '<div class="replace-section' + showReplace + '">' +
-        '<label class="checkbox-row">' +
-          '<input type="checkbox" class="replaceCheck" name="replace_table_' + paneCount + '" value="1">' +
-          '<span class="checkbox-label">Replace table name in output</span>' +
-        '</label>' +
-        '<div class="new-table-input">' +
-          '<input type="text" name="new_table_' + paneCount + '" class="text-input newTableInput" placeholder="New table name\\u2026" autocomplete="off">' +
-        '</div>' +
+        '<label class="checkbox-row"><input type="checkbox" class="replaceCheck" name="replace_table_' + paneCount + '" value="1">' +
+        '<span class="checkbox-label">Replace table name in output</span></label>' +
+        '<div class="new-table-input"><input type="text" name="new_table_' + paneCount + '" class="text-input newTableInput" placeholder="New table name\u2026" autocomplete="off" style="width:100%"></div>' +
       '</div>' +
-      '<div style="margin-top:16px">' +
-        '<textarea name="mapping_text_' + paneCount + '" class="paste-area mappingArea" ' +
-          'placeholder="Paste your Excel cells here\\u2026" spellcheck="false"></textarea>' +
-        '<div class="pair-count"></div>' +
-        '<div class="mapping-preview" style="display:none"></div>' +
+      '<div style="margin-top:14px">' +
+        '<textarea name="mapping_text_' + paneCount + '" class="paste-area mappingArea" placeholder="Paste your Excel cells here\u2026" spellcheck="false"></textarea>' +
+        '<div class="pair-count"></div><div class="mapping-preview" style="display:none"></div>' +
       '</div>';
-
-    // Wire up events on new pane
     pane.querySelector('.replaceCheck').addEventListener('change', function() {
       pane.querySelector('.new-table-input').classList.toggle('show', this.checked);
       if (!this.checked) pane.querySelector('.newTableInput').value = '';
     });
     pane.querySelector('.mappingArea').addEventListener('input', () => { updatePreviewFor(pane); checkReady(); });
     panes.appendChild(pane);
-
     renumberTabLabels();
     activateTab(idx);
     checkReady();
   }
 
   function removeTab(idx) {
-    const allPanes = document.querySelectorAll('.tab-pane');
-    if (allPanes.length <= 1) return; // keep at least one
+    if (document.querySelectorAll('.tab-pane').length <= 1) return;
     const pane = document.querySelector('.tab-pane[data-tab="' + idx + '"]');
     const btn  = document.querySelector('.tab-btn[data-tab="' + idx + '"]');
     const wasActive = btn && btn.classList.contains('active');
     if (pane) pane.remove();
-    if (btn) btn.remove();
+    if (btn)  btn.remove();
     renumberTabLabels();
     if (wasActive) {
       const first = document.querySelector('.tab-btn[data-tab]');
@@ -987,7 +1165,7 @@ HTML = """<!DOCTYPE html>
     checkReady();
   }
 
-  // ── Wire up initial tab 0 events ─────────────────────────────────────────
+  // Wire up initial tab 0
   (function() {
     const pane0 = document.querySelector('.tab-pane[data-tab="0"]');
     pane0.querySelector('.replaceCheck').addEventListener('change', function() {
@@ -995,29 +1173,22 @@ HTML = """<!DOCTYPE html>
       if (!this.checked) pane0.querySelector('.newTableInput').value = '';
     });
     pane0.querySelector('.mappingArea').addEventListener('input', () => { updatePreviewFor(pane0); checkReady(); });
+    document.querySelector('.tab-btn[data-tab="0"]').addEventListener('click', () => activateTab(0));
   })();
-
   document.getElementById('addTabBtn').addEventListener('click', addTab);
 
-  // Initial tab-bar click for tab 0
-  document.querySelector('.tab-btn[data-tab="0"]').addEventListener('click', () => activateTab(0));
-
-  // ── Walk parsed JSON to find first "table" inside a config string ─────────
+  // ══════════════════════════════════════════════════════════════════════════
+  //  JSON HELPERS
+  // ══════════════════════════════════════════════════════════════════════════
   function findTableInJson(obj) {
     if (Array.isArray(obj)) {
       for (const item of obj) { const r = findTableInJson(item); if (r) return r; }
     } else if (obj && typeof obj === 'object') {
       for (const [k, v] of Object.entries(obj)) {
         if (typeof v === 'string') {
-          try {
-            const inner = JSON.parse(v);
-            if (inner && typeof inner === 'object' && inner.table)
-              return String(inner.table);
-          } catch(_) {}
+          try { const inner = JSON.parse(v); if (inner && typeof inner === 'object' && inner.table) return String(inner.table); } catch(_) {}
         }
-        if (v && typeof v === 'object') {
-          const r = findTableInJson(v); if (r) return r;
-        }
+        if (v && typeof v === 'object') { const r = findTableInJson(v); if (r) return r; }
       }
     }
     return null;
@@ -1513,13 +1684,15 @@ def main():
     server = HTTPServer(("0.0.0.0", port), Handler)
     print(f"""
 ╔══════════════════════════════════════════════╗
-║       Connector JSON Mapping Updater — Ready           ║
+║       Litmus Deployment Assist — Ready       ║
 ╠══════════════════════════════════════════════╣
 ║  Open:  http://localhost:{port}                 ║
 ║  Stop:  Ctrl+C                               ║
+╠══════════════════════════════════════════════╣
+║  Apps:                                       ║
+║    • Integration Connector Assist            ║
+║    • Digital Twin Model Assist (coming soon) ║
 ╚══════════════════════════════════════════════╝
-
-  Upload JSON → Paste mapping from Excel → Download updated JSON
 """)
 
     try:
