@@ -268,6 +268,14 @@ HTML = """<!DOCTYPE html>
   .le-status.error   { color: var(--red); }
   .le-status.success { color: var(--green); }
 
+  /* DT status (reuse le-status pattern) */
+  .dt-status {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    padding: 8px 14px 0;
+  }
+  .dt-status.error   { color: var(--red); }
+  .dt-status.success { color: var(--green); }
+
   /* Ping row inside top panel */
   .ping-separator { width: 1px; height: 26px; background: var(--border); margin: 0 4px; }
   .ping-result-inline {
@@ -742,16 +750,28 @@ HTML = """<!DOCTYPE html>
         <p class="pane-subtitle">Automate the deployment and configuration of Digital Twin models on Litmus Edge.</p>
       </div>
 
-      <div class="placeholder-shell">
-        <div class="placeholder-icon">⬡</div>
-        <div class="placeholder-title">Coming Soon</div>
-        <div class="placeholder-sub">
-          The Digital Twin Model Assist tool is currently under development.<br>
-          It will let you automate model deployment, tag binding,<br>and configuration push directly to Litmus Edge devices.
+      <!-- DT: no-connection prompt (shown when LE not connected) -->
+      <div class="card" id="dtNoConnection">
+        <div class="card-header">
+          <div class="card-icon icon-json" style="background:rgba(62,207,142,0.12)">⬡</div>
+          <div>
+            <div class="card-title">Connect to Litmus Edge</div>
+            <div class="card-desc">Switch to <strong>Litmus Edge</strong> mode and connect using the top panel to list Digital Twin models.</div>
+          </div>
         </div>
-        <div class="coming-soon-badge">
-          <span>In Development</span>
+      </div>
+
+      <!-- DT: model list (shown after LE connected) -->
+      <div class="card" id="dtModelCard" style="display:none">
+        <div class="card-header">
+          <div class="card-icon icon-json" style="background:rgba(62,207,142,0.12)">⬡</div>
+          <div>
+            <div class="card-title">Select Template Model</div>
+            <div class="card-desc">Pick a Digital Twin model from your connected Litmus Edge device</div>
+          </div>
         </div>
+        <div class="dt-status" id="dtStatus" style="display:none"></div>
+        <div class="instance-list" id="dtModelList"></div>
       </div>
     </div>
     <!-- /pane-dtwin -->
@@ -831,6 +851,8 @@ HTML = """<!DOCTYPE html>
       document.getElementById('pushResults').style.display = 'none';
       document.getElementById('leVersionBadge').style.display = 'none';
       if (howSteps) howSteps.innerHTML = manualSteps;
+      // Reset DT pane state
+      resetDtPane();
     }
     checkReady();
   });
@@ -901,6 +923,8 @@ HTML = """<!DOCTYPE html>
             }
           })
           .catch(() => {});
+        // Also fetch DT models for Digital Twin pane
+        fetchDtModels(ip, token);
       })
       .catch(err => {
         status.textContent = 'Error: ' + err.message; status.className = 'le-status error';
@@ -1180,6 +1204,87 @@ HTML = """<!DOCTYPE html>
   // ══════════════════════════════════════════════════════════════════════════
   //  JSON HELPERS
   // ══════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
+  //  DIGITAL TWIN — Fetch & render model list
+  // ══════════════════════════════════════════════════════════════════════════
+  let dtModels = [];
+  let selectedDtModelIdx = -1;
+
+  function fetchDtModels(ip, token) {
+    const card   = document.getElementById('dtModelCard');
+    const noConn = document.getElementById('dtNoConnection');
+    const status = document.getElementById('dtStatus');
+    const list   = document.getElementById('dtModelList');
+    // Show card, hide no-connection prompt
+    noConn.style.display = 'none';
+    card.style.display   = 'block';
+    status.style.display = 'block';
+    status.textContent   = 'Fetching models\u2026';
+    status.className     = 'dt-status';
+    list.innerHTML       = '';
+
+    fetch('/api/dt/models?ip=' + encodeURIComponent(ip) + '&token=' + encodeURIComponent(token))
+      .then(r => {
+        if (!r.ok) return r.text().then(t => { throw new Error(t || 'Failed to fetch models'); });
+        return r.json();
+      })
+      .then(models => {
+        dtModels = models;
+        selectedDtModelIdx = -1;
+        if (!models.length) {
+          status.textContent = 'No Digital Twin models found on this device';
+          status.className   = 'dt-status';
+          return;
+        }
+        status.textContent = models.length + ' model' + (models.length !== 1 ? 's' : '') + ' found';
+        status.className   = 'dt-status success';
+        renderDtModelList(models);
+      })
+      .catch(err => {
+        status.textContent = 'Error: ' + err.message;
+        status.className   = 'dt-status error';
+        dtModels = [];
+      });
+  }
+
+  function renderDtModelList(models) {
+    const list = document.getElementById('dtModelList');
+    list.innerHTML = '';
+    models.forEach((m, i) => {
+      const div = document.createElement('div');
+      div.className = 'instance-item';
+      div.setAttribute('data-idx', i);
+      div.innerHTML = '<span class="inst-icon">\u25cb</span>' +
+        '<span class="inst-table">' + escHtml(m.Name || 'Unnamed') + '</span>' +
+        '<span class="inst-provider">' + escHtml(m.ID || '') + '</span>';
+      div.addEventListener('click', () => selectDtModel(i));
+      list.appendChild(div);
+    });
+  }
+
+  function selectDtModel(idx) {
+    selectedDtModelIdx = idx;
+    document.querySelectorAll('#dtModelList .instance-item').forEach((el, i) => {
+      el.classList.toggle('selected', i === idx);
+      el.querySelector('.inst-icon').textContent = (i === idx) ? '\u25cf' : '\u25cb';
+    });
+  }
+
+  // Reset DT pane when switching back to manual mode
+  function resetDtPane() {
+    dtModels = [];
+    selectedDtModelIdx = -1;
+    document.getElementById('dtModelCard').style.display   = 'none';
+    document.getElementById('dtNoConnection').style.display = 'block';
+    var list = document.getElementById('dtModelList');
+    if (list) list.innerHTML = '';
+    var status = document.getElementById('dtStatus');
+    if (status) { status.style.display = 'none'; status.textContent = ''; }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  JSON HELPERS
+  // ══════════════════════════════════════════════════════════════════════════
   function findTableInJson(obj) {
     if (Array.isArray(obj)) {
       for (const item of obj) { const r = findTableInJson(item); if (r) return r; }
@@ -1271,6 +1376,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_le_deviceinfo()
         elif self.path.startswith("/api/instances"):
             self._handle_le_instances()
+        elif self.path.startswith("/api/dt/models"):
+            self._handle_dt_models()
         else:
             self.send_response(404)
             self.end_headers()
@@ -1420,6 +1527,61 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(out)))
         self.end_headers()
         self.wfile.write(out)
+
+    def _handle_dt_models(self):
+        """Proxy endpoint: fetch Digital Twin models from a Litmus Edge device via GraphQL."""
+        from urllib.parse import urlparse, parse_qs
+        qs = parse_qs(urlparse(self.path).query)
+        ip = qs.get("ip", [""])[0].strip()
+        token = qs.get("token", [""])[0].strip()
+        if not ip:
+            self._send_json_error(400, "Missing 'ip' parameter")
+            return
+        if not token:
+            self._send_json_error(400, "Missing API token")
+            return
+        if ip.lower() in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+            self._send_json_error(400, "Cannot connect to localhost")
+            return
+
+        url = f"https://{ip}/digital-twins"
+        gql_body = json.dumps({
+            "query": "query ListModels { ListModels { ID Name } }",
+            "variables": {}
+        }).encode("utf-8")
+        try:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            req = urllib.request.Request(url, data=gql_body, method="POST")
+            req.add_header("Content-Type", "application/json")
+            req.add_header("Accept", "application/json")
+            auth_str = base64.b64encode(f"{token}:".encode("utf-8")).decode("ascii")
+            req.add_header("Authorization", f"Basic {auth_str}")
+            with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as e:
+            self._send_json_error(502, f"Litmus Edge returned HTTP {e.code}")
+            return
+        except Exception as e:
+            self._send_json_error(502, f"Cannot reach Litmus Edge at {ip}: {e}")
+            return
+
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            self._send_json_error(502, "Invalid JSON response from Litmus Edge")
+            return
+
+        models = []
+        if isinstance(payload, dict):
+            data = payload.get("data", {})
+            if isinstance(data, dict):
+                models = data.get("ListModels", [])
+        if not isinstance(models, list):
+            models = []
+
+        self._send_json_resp(models)
 
     def _handle_le_push(self):
         """Process mapping tabs and POST each instance to Litmus Edge."""
