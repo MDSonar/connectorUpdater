@@ -622,7 +622,7 @@ HTML = """<!DOCTYPE html>
     </div>
   </nav>
 
-  <div class="sidebar-footer">v4.0.0 &nbsp;·&nbsp; localhost:8081</div>
+  <div class="sidebar-footer">v4.0.1 &nbsp;·&nbsp; localhost:8081</div>
 </aside>
 
 <!-- ═══════════════════════════════════════════════════════════════════════
@@ -849,7 +849,7 @@ HTML = """<!DOCTYPE html>
         </div>
         <div class="dt-tab-content" id="dtTabDynamic">
           <table class="dt-attr-table" id="dtDynamicTable">
-            <thead><tr><th>Name</th><th>Unit</th><th>DataType</th><th>Topic</th></tr></thead>
+            <thead><tr><th>Name</th><th>Unit</th><th>Data Type</th><th>Skip Key</th><th>Topic Expression</th><th>Schema ID</th></tr></thead>
             <tbody></tbody>
           </table>
           <div class="dt-empty" id="dtDynamicEmpty">No dynamic attributes found</div>
@@ -1399,10 +1399,11 @@ HTML = """<!DOCTYPE html>
     Promise.all([
       fetch('/api/dt/static-attrs?' + base).then(r => r.ok ? r.json() : []),
       fetch('/api/dt/dynamic-attrs?' + base).then(r => r.ok ? r.json() : []),
-      fetch('/api/dt/hierarchy?' + base).then(r => r.ok ? r.json() : {})
-    ]).then(([staticAttrs, dynamicAttrs, hierarchy]) => {
+      fetch('/api/dt/hierarchy?' + base).then(r => r.ok ? r.json() : {}),
+      fetch('/api/dt/transformations?' + base).then(r => r.ok ? r.json() : [])
+    ]).then(([staticAttrs, dynamicAttrs, hierarchy, transformations]) => {
       renderDtStaticAttrs(staticAttrs);
-      renderDtDynamicAttrs(dynamicAttrs);
+      renderDtDynamicAttrs(dynamicAttrs, transformations);
       renderDtHierarchy(hierarchy);
       status.textContent = '';
     }).catch(err => {
@@ -1423,17 +1424,26 @@ HTML = """<!DOCTYPE html>
     });
   }
 
-  function renderDtDynamicAttrs(attrs) {
+  function renderDtDynamicAttrs(attrs, transformations) {
     const tbody = document.querySelector('#dtDynamicTable tbody');
     const empty = document.getElementById('dtDynamicEmpty');
     if (!attrs || !attrs.length) { empty.style.display = 'block'; return; }
     empty.style.display = 'none';
+    var schemaMap = {};
+    if (transformations && transformations.length) {
+      transformations.forEach(t => { schemaMap[t.ID] = t.Name; });
+    }
     attrs.forEach(a => {
       const tr = document.createElement('tr');
+      var skip = a.SkipParentKey === true || a.SkipParentKey === 'true' ? '\u2611' : '\u2610';
+      var topicExpr = a.TopicExpression || a.Topic || '\u2014';
+      var schemaName = a.SchemaID ? (schemaMap[a.SchemaID] || a.SchemaID) : '\u2014';
       tr.innerHTML = '<td>' + escHtml(a.Name || '') + '</td>' +
         '<td>' + escHtml(a.Unit || '\u2014') + '</td>' +
         '<td>' + escHtml(a.DataType || 'JSON') + '</td>' +
-        '<td>' + escHtml(a.Topic || '\u2014') + '</td>';
+        '<td style="text-align:center">' + skip + '</td>' +
+        '<td>' + escHtml(topicExpr) + '</td>' +
+        '<td>' + escHtml(schemaName) + '</td>';
       tbody.appendChild(tr);
     });
   }
@@ -1576,6 +1586,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_dt_dynamic_attrs()
         elif self.path.startswith("/api/dt/hierarchy"):
             self._handle_dt_hierarchy()
+        elif self.path.startswith("/api/dt/transformations"):
+            self._handle_dt_transformations()
         else:
             self.send_response(404)
             self.end_headers()
@@ -1825,7 +1837,7 @@ class Handler(BaseHTTPRequestHandler):
         ip, token, model_id = params
         query = ("query ListDynamicAttributes($input: ListDynamicAttributeRequest!) {"
                  "  ListDynamicAttributes(input:$input) {"
-                 "    ID ModelID InstanceID Topic Name Unit DataType SchemaID CreatedAt UpdatedAt"
+                 "    ID ModelID InstanceID Topic TopicExpression Name Unit DataType SkipParentKey SchemaID CreatedAt UpdatedAt"
                  "  }}")
         variables = {"input": {"ModelID": model_id}}
         try:
@@ -1858,6 +1870,28 @@ class Handler(BaseHTTPRequestHandler):
             return
         hierarchy = payload.get("data", {}).get("GetHierarchy", {})
         self._send_json_resp(hierarchy if isinstance(hierarchy, dict) else {})
+
+    def _handle_dt_transformations(self):
+        """Fetch transformations for a Digital Twin model."""
+        params = self._dt_parse_qs()
+        if not params:
+            return
+        ip, token, model_id = params
+        query = ("query ListTransformations($input: ListTransformationRequest!) {"
+                 "  ListTransformations(input: $input) {"
+                 "    ID Name Schema"
+                 "  }}")
+        variables = {"input": {"ModelID": model_id}}
+        try:
+            payload = self._dt_graphql(ip, token, query, variables)
+        except urllib.error.HTTPError as e:
+            self._send_json_error(502, f"Litmus Edge returned HTTP {e.code}")
+            return
+        except Exception as e:
+            self._send_json_error(502, f"Cannot reach Litmus Edge: {e}")
+            return
+        transforms = payload.get("data", {}).get("ListTransformations", [])
+        self._send_json_resp(transforms if isinstance(transforms, list) else [])
 
     def _handle_le_push(self):
         """Process mapping tabs and POST each instance to Litmus Edge."""
