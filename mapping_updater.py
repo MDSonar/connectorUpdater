@@ -371,6 +371,93 @@ HTML = """<!DOCTYPE html>
     white-space: pre-wrap; word-break: break-all; line-height: 1.5;
   }
 
+  /* DT Clone tabs */
+  .dtc-tab-bar {
+    display: flex; align-items: center; gap: 0;
+    border-bottom: 1px solid var(--border); margin-bottom: 16px; overflow-x: auto;
+  }
+  .dtc-tab-btn {
+    background: none; border: none; border-bottom: 2px solid transparent;
+    color: var(--muted); font-family: var(--sans); font-size: 12px; font-weight: 500;
+    padding: 9px 15px; cursor: pointer; white-space: nowrap;
+    transition: color 0.2s, border-color 0.2s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .dtc-tab-btn:hover { color: var(--text); }
+  .dtc-tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .dtc-tab-btn .dtc-close {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 15px; height: 15px; border-radius: 50%; font-size: 10px;
+    background: transparent; color: var(--muted); cursor: pointer;
+    border: none; line-height: 1; transition: background 0.15s, color 0.15s;
+  }
+  .dtc-tab-btn .dtc-close:hover { background: var(--red); color: #fff; }
+  .dtc-tab-add {
+    background: none; border: 1px dashed var(--border);
+    color: var(--muted); font-size: 15px; width: 26px; height: 26px;
+    border-radius: 6px; cursor: pointer; display: flex;
+    align-items: center; justify-content: center; margin-left: 6px;
+    transition: border-color 0.2s, color 0.2s; flex-shrink: 0;
+  }
+  .dtc-tab-add:hover { border-color: var(--accent); color: var(--accent); }
+  .dtc-pane { display: none; }
+  .dtc-pane.active { display: block; }
+  .dtc-name-row {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+  }
+  .dtc-name-row label {
+    color: var(--muted); font-size: 12px; font-weight: 600; white-space: nowrap;
+  }
+  .dtc-name-input {
+    flex: 1; background: var(--bg); border: 1px solid var(--border);
+    color: var(--text); font-family: var(--mono); font-size: 12px;
+    padding: 7px 12px; border-radius: 6px; outline: none;
+  }
+  .dtc-name-input:focus { border-color: var(--accent); }
+  .dtc-paste-area {
+    width: 100%; min-height: 120px; background: var(--bg); border: 1px solid var(--border);
+    color: var(--text); font-family: var(--mono); font-size: 12px;
+    padding: 12px; border-radius: 6px; resize: vertical; outline: none;
+    box-sizing: border-box;
+  }
+  .dtc-paste-area:focus { border-color: var(--accent); }
+  .dtc-row-count {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    margin-top: 6px;
+  }
+  .dtc-preview-table {
+    width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11px;
+    margin-top: 10px;
+  }
+  .dtc-preview-table th {
+    text-align: left; color: var(--muted); font-weight: 600; font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    padding: 5px 8px; border-bottom: 1px solid var(--border);
+  }
+  .dtc-preview-table td {
+    padding: 5px 8px; border-bottom: 1px solid rgba(34,34,46,0.5); color: var(--text);
+  }
+  .dtc-preview-table td:first-child { color: var(--accent); font-weight: 600; }
+  .btn-push-clone {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--green); color: #111; border: none; border-radius: 8px;
+    font-family: var(--sans); font-size: 13px; font-weight: 600;
+    padding: 10px 22px; cursor: pointer; margin-top: 18px;
+    transition: opacity 0.15s;
+  }
+  .btn-push-clone:hover { opacity: 0.85; }
+  .btn-push-clone:disabled { opacity: 0.4; cursor: not-allowed; }
+  .dtc-push-results {
+    margin-top: 12px; display: none; flex-direction: column; gap: 6px;
+  }
+  .dtc-push-result-item {
+    font-family: var(--mono); font-size: 11px; padding: 8px 12px;
+    border-radius: 6px;
+  }
+  .dtc-push-result-item.ok { background: var(--green-dim); color: var(--green); }
+  .dtc-push-result-item.fail { background: rgba(224,92,92,0.1); color: var(--red); }
+  .dtc-push-result-item.info { background: rgba(255,200,60,0.08); color: #e0c84a; }
+
   /* Ping row inside top panel */
   .ping-separator { width: 1px; height: 26px; background: var(--border); margin: 0 4px; }
   .ping-result-inline {
@@ -904,6 +991,45 @@ HTML = """<!DOCTYPE html>
           <div class="dt-empty" id="dtHierarchyEmpty">No hierarchy data found</div>
         </div>
       </div>
+
+      <!-- DT: Cloning Tabs (shown after a model is selected) -->
+      <div class="card" id="dtCloneCard" style="display:none">
+        <div class="card-header">
+          <div class="card-icon icon-json" style="background:rgba(255,200,60,0.12)">&#x2699;</div>
+          <div style="flex:1">
+            <div class="card-title">Cloning Tabs</div>
+            <div class="card-desc">Configure clone models &mdash; each tab creates a new clone from the template</div>
+          </div>
+        </div>
+
+        <div class="dtc-tab-bar" id="dtcTabBar">
+          <button type="button" class="dtc-tab-btn active" data-dtctab="0">Clone 1</button>
+          <button type="button" class="dtc-tab-add" id="dtcAddBtn" title="Add clone tab">+</button>
+        </div>
+
+        <div id="dtcTabPanes">
+          <div class="dtc-pane active" data-dtctab="0">
+            <div class="dtc-name-row">
+              <label>Clone Name:</label>
+              <input type="text" class="dtc-name-input" placeholder="Enter clone model name (required)..." autocomplete="off">
+            </div>
+            <textarea class="dtc-paste-area" placeholder="Paste your Excel cells here...&#10;&#10;Name&#9;Unit&#9;DataType&#9;SkipKey&#9;TopicExpression&#9;SchemaID&#9;Hierarchy&#10;CYCLE_COMPLETE&#9;&#9;JSON&#9;&#9;devicehub.alias.{device}.CYCLE_COMPLETE&#9;data_format&#9;root/data" spellcheck="false"></textarea>
+            <div class="dtc-row-count"></div>
+            <div class="dtc-preview-wrap" style="max-height:200px;overflow-y:auto">
+              <table class="dtc-preview-table" style="display:none">
+                <thead><tr><th>Name</th><th>Unit</th><th>DataType</th><th>Skip Key</th><th>Topic Expr</th><th>Schema ID</th><th>Hierarchy</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <button type="button" class="btn-push-clone" id="dtcPushBtn" disabled>
+          Push Clones to Litmus Edge
+        </button>
+        <div class="dtc-push-results" id="dtcPushResults"></div>
+      </div>
+
     </div>
     <!-- /pane-dtwin -->
 
@@ -1422,6 +1548,7 @@ HTML = """<!DOCTYPE html>
     const model = dtModels[idx];
     if (model) {
       document.getElementById('dtPreviewCard').style.display = 'block';
+      document.getElementById('dtCloneCard').style.display = 'block';
       document.getElementById('dtPreviewDesc').textContent = 'Inspecting: ' + (model.Name || 'Unnamed');
       fetchDtPreview(model.ID);
     }
@@ -1468,6 +1595,248 @@ HTML = """<!DOCTYPE html>
     var data = window._dtRawData ? window._dtRawData[key] : null;
     document.getElementById('dtRawContent').textContent = data ? JSON.stringify(data, null, 2) : 'No data';
   }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  DT CLONING TABS
+  // ══════════════════════════════════════════════════════════════════════════
+  var dtcTabCounter = 1;
+
+  function dtcActivateTab(idx) {
+    document.querySelectorAll('.dtc-tab-btn[data-dtctab]').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.dtc-pane').forEach(p => p.classList.remove('active'));
+    var btn  = document.querySelector('.dtc-tab-btn[data-dtctab="' + idx + '"]');
+    var pane = document.querySelector('.dtc-pane[data-dtctab="' + idx + '"]');
+    if (btn)  btn.classList.add('active');
+    if (pane) pane.classList.add('active');
+  }
+
+  function dtcRenumberLabels() {
+    document.querySelectorAll('.dtc-tab-btn[data-dtctab]').forEach(function(b, i) {
+      b.childNodes[0].textContent = 'Clone ' + (i + 1) + ' ';
+    });
+  }
+
+  function dtcParsePasted(text) {
+    var rows = [];
+    text.split(/\\r?\\n/).forEach(function(line) {
+      if (!line.trim()) return;
+      var delim = line.indexOf('\\t') !== -1 ? '\\t' : ',';
+      var cols = line.split(delim).map(function(c) { return c.trim(); });
+      if (cols.length < 1) return;
+      var nameL = (cols[0] || '').toLowerCase();
+      if (nameL === 'name' || nameL === 'header') return;
+      rows.push({
+        Name: cols[0] || '',
+        Unit: cols[1] || '',
+        DataType: cols[2] || 'JSON',
+        SkipKey: cols[3] || '',
+        TopicExpression: cols[4] || '',
+        SchemaID: cols[5] || '',
+        Hierarchy: cols[6] || ''
+      });
+    });
+    return rows;
+  }
+
+  function dtcUpdatePreview(pane) {
+    var area = pane.querySelector('.dtc-paste-area');
+    var tbl  = pane.querySelector('.dtc-preview-table');
+    var cnt  = pane.querySelector('.dtc-row-count');
+    var tbody = tbl.querySelector('tbody');
+    tbody.innerHTML = '';
+    var rows = dtcParsePasted(area.value);
+    if (rows.length === 0) {
+      tbl.style.display = 'none';
+      cnt.textContent = '';
+    } else {
+      tbl.style.display = 'table';
+      cnt.textContent = rows.length + ' attribute(s) parsed';
+      rows.forEach(function(r) {
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + escHtml(r.Name) + '</td>' +
+          '<td>' + escHtml(r.Unit || '\\u2014') + '</td>' +
+          '<td>' + escHtml(r.DataType) + '</td>' +
+          '<td>' + escHtml(r.SkipKey || '\\u2014') + '</td>' +
+          '<td>' + escHtml(r.TopicExpression || '\\u2014') + '</td>' +
+          '<td>' + escHtml(r.SchemaID || '\\u2014') + '</td>' +
+          '<td>' + escHtml(r.Hierarchy || '\\u2014') + '</td>';
+        tbody.appendChild(tr);
+      });
+    }
+    dtcCheckReady();
+  }
+
+  function dtcCheckReady() {
+    var anyReady = false;
+    document.querySelectorAll('.dtc-pane').forEach(function(pane) {
+      var name = pane.querySelector('.dtc-name-input').value.trim();
+      var rows = dtcParsePasted(pane.querySelector('.dtc-paste-area').value);
+      if (name && rows.length > 0) anyReady = true;
+    });
+    document.getElementById('dtcPushBtn').disabled = !anyReady;
+  }
+
+  function dtcAddTab() {
+    var idx = dtcTabCounter++;
+    var bar = document.getElementById('dtcTabBar');
+    var panes = document.getElementById('dtcTabPanes');
+    var count = document.querySelectorAll('.dtc-pane').length;
+
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'dtc-tab-btn';
+    btn.setAttribute('data-dtctab', idx);
+    btn.innerHTML = 'Clone ' + (count + 1) + ' <button type="button" class="dtc-close" title="Close tab">\\u00d7</button>';
+    btn.addEventListener('click', function(e) { if (e.target.classList.contains('dtc-close')) return; dtcActivateTab(idx); });
+    btn.querySelector('.dtc-close').addEventListener('click', function() { dtcRemoveTab(idx); });
+    bar.insertBefore(btn, document.getElementById('dtcAddBtn'));
+
+    var pane = document.createElement('div');
+    pane.className = 'dtc-pane'; pane.setAttribute('data-dtctab', idx);
+    pane.innerHTML =
+      '<div class="dtc-name-row">' +
+        '<label>Clone Name:</label>' +
+        '<input type="text" class="dtc-name-input" placeholder="Enter clone model name (required)..." autocomplete="off">' +
+      '</div>' +
+      '<textarea class="dtc-paste-area" placeholder="Paste your Excel cells here...\\nName\\tUnit\\tDataType\\tSkipKey\\tTopicExpression\\tSchemaID\\tHierarchy" spellcheck="false"></textarea>' +
+      '<div class="dtc-row-count"></div>' +
+      '<div class="dtc-preview-wrap" style="max-height:200px;overflow-y:auto">' +
+        '<table class="dtc-preview-table" style="display:none">' +
+          '<thead><tr><th>Name</th><th>Unit</th><th>DataType</th><th>Skip Key</th><th>Topic Expr</th><th>Schema ID</th><th>Hierarchy</th></tr></thead>' +
+          '<tbody></tbody>' +
+        '</table>' +
+      '</div>';
+    pane.querySelector('.dtc-paste-area').addEventListener('input', function() { dtcUpdatePreview(pane); });
+    pane.querySelector('.dtc-name-input').addEventListener('input', function() { dtcCheckReady(); });
+    panes.appendChild(pane);
+    dtcRenumberLabels();
+    dtcActivateTab(idx);
+    dtcCheckReady();
+  }
+
+  function dtcRemoveTab(idx) {
+    if (document.querySelectorAll('.dtc-pane').length <= 1) return;
+    var pane = document.querySelector('.dtc-pane[data-dtctab="' + idx + '"]');
+    var btn  = document.querySelector('.dtc-tab-btn[data-dtctab="' + idx + '"]');
+    var wasActive = btn && btn.classList.contains('active');
+    if (pane) pane.remove();
+    if (btn)  btn.remove();
+    dtcRenumberLabels();
+    if (wasActive) {
+      var first = document.querySelector('.dtc-tab-btn[data-dtctab]');
+      if (first) dtcActivateTab(first.getAttribute('data-dtctab'));
+    }
+    dtcCheckReady();
+  }
+
+  function dtcResetAll() {
+    var panes = document.getElementById('dtcTabPanes');
+    panes.innerHTML = '';
+    var bar = document.getElementById('dtcTabBar');
+    bar.querySelectorAll('.dtc-tab-btn').forEach(function(b) { b.remove(); });
+    dtcTabCounter = 1;
+    // Recreate initial tab
+    var btn0 = document.createElement('button');
+    btn0.type = 'button'; btn0.className = 'dtc-tab-btn active';
+    btn0.setAttribute('data-dtctab', '0');
+    btn0.textContent = 'Clone 1 ';
+    btn0.addEventListener('click', function() { dtcActivateTab('0'); });
+    bar.insertBefore(btn0, document.getElementById('dtcAddBtn'));
+    var pane0 = document.createElement('div');
+    pane0.className = 'dtc-pane active'; pane0.setAttribute('data-dtctab', '0');
+    pane0.innerHTML =
+      '<div class="dtc-name-row">' +
+        '<label>Clone Name:</label>' +
+        '<input type="text" class="dtc-name-input" placeholder="Enter clone model name (required)..." autocomplete="off">' +
+      '</div>' +
+      '<textarea class="dtc-paste-area" placeholder="Paste your Excel cells here...\\nName\\tUnit\\tDataType\\tSkipKey\\tTopicExpression\\tSchemaID\\tHierarchy" spellcheck="false"></textarea>' +
+      '<div class="dtc-row-count"></div>' +
+      '<div class="dtc-preview-wrap" style="max-height:200px;overflow-y:auto">' +
+        '<table class="dtc-preview-table" style="display:none">' +
+          '<thead><tr><th>Name</th><th>Unit</th><th>DataType</th><th>Skip Key</th><th>Topic Expr</th><th>Schema ID</th><th>Hierarchy</th></tr></thead>' +
+          '<tbody></tbody>' +
+        '</table>' +
+      '</div>';
+    pane0.querySelector('.dtc-paste-area').addEventListener('input', function() { dtcUpdatePreview(pane0); });
+    pane0.querySelector('.dtc-name-input').addEventListener('input', function() { dtcCheckReady(); });
+    panes.appendChild(pane0);
+    document.getElementById('dtcPushResults').style.display = 'none';
+    document.getElementById('dtcPushResults').innerHTML = '';
+    dtcCheckReady();
+  }
+
+  // Wire initial tab 0 listeners
+  (function() {
+    var pane0 = document.querySelector('.dtc-pane[data-dtctab="0"]');
+    if (pane0) {
+      pane0.querySelector('.dtc-paste-area').addEventListener('input', function() { dtcUpdatePreview(pane0); });
+      pane0.querySelector('.dtc-name-input').addEventListener('input', function() { dtcCheckReady(); });
+    }
+  })();
+
+  document.getElementById('dtcAddBtn').addEventListener('click', dtcAddTab);
+
+  // ── Push Clones ──
+  document.getElementById('dtcPushBtn').addEventListener('click', function() {
+    var pushBtn = this;
+    var resultsDiv = document.getElementById('dtcPushResults');
+    resultsDiv.style.display = 'flex'; resultsDiv.innerHTML = '';
+    pushBtn.disabled = true; pushBtn.textContent = 'Pushing clones\\u2026';
+
+    var templateModel = dtModels[selectedDtModelIdx];
+    if (!templateModel) {
+      resultsDiv.innerHTML = '<div class="dtc-push-result-item fail">No template model selected</div>';
+      pushBtn.disabled = false; pushBtn.textContent = 'Push Clones to Litmus Edge';
+      return;
+    }
+
+    var clones = [];
+    document.querySelectorAll('.dtc-pane').forEach(function(pane) {
+      var name = pane.querySelector('.dtc-name-input').value.trim();
+      var rows = dtcParsePasted(pane.querySelector('.dtc-paste-area').value);
+      if (name && rows.length > 0) {
+        clones.push({ name: name, attributes: rows });
+      }
+    });
+
+    if (clones.length === 0) {
+      resultsDiv.innerHTML = '<div class="dtc-push-result-item fail">No valid clone tabs configured</div>';
+      pushBtn.disabled = false; pushBtn.textContent = 'Push Clones to Litmus Edge';
+      return;
+    }
+
+    var payload = {
+      template_model_id: templateModel.ID,
+      clones: clones
+    };
+
+    var base = dtApiParams();
+    fetch('/api/dt/push-clones?' + base, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.results) {
+        data.results.forEach(function(r) {
+          var div = document.createElement('div');
+          div.className = 'dtc-push-result-item ' + (r.ok ? 'ok' : 'fail');
+          div.textContent = (r.ok ? '\\u2713 ' : '\\u2717 ') + r.name + ': ' + r.message;
+          resultsDiv.appendChild(div);
+        });
+      } else if (data.error) {
+        resultsDiv.innerHTML = '<div class="dtc-push-result-item fail">' + escHtml(data.error) + '</div>';
+      }
+    })
+    .catch(function(err) {
+      resultsDiv.innerHTML = '<div class="dtc-push-result-item fail">Network error: ' + escHtml(err.message) + '</div>';
+    })
+    .finally(function() {
+      pushBtn.disabled = false; pushBtn.textContent = 'Push Clones to Litmus Edge';
+      dtcCheckReady();
+    });
+  });
 
   function fetchDtPreview(modelId) {
     const status = document.getElementById('dtPreviewStatus');
@@ -1571,11 +1940,13 @@ HTML = """<!DOCTYPE html>
     selectedDtModelIdx = -1;
     document.getElementById('dtModelCard').style.display   = 'none';
     document.getElementById('dtPreviewCard').style.display  = 'none';
+    document.getElementById('dtCloneCard').style.display    = 'none';
     document.getElementById('dtNoConnection').style.display = 'block';
     var list = document.getElementById('dtModelList');
     if (list) list.innerHTML = '';
     var status = document.getElementById('dtStatus');
     if (status) { status.style.display = 'none'; status.textContent = ''; }
+    dtcResetAll();
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1987,6 +2358,234 @@ class Handler(BaseHTTPRequestHandler):
         transforms = payload.get("data", {}).get("ListTransformations", [])
         self._send_json_resp(transforms if isinstance(transforms, list) else [])
 
+    def _handle_dt_push_clones(self):
+        """Clone template model, add dynamic attributes, update hierarchy for each clone tab."""
+        from urllib.parse import urlparse, parse_qs
+        qs = parse_qs(urlparse(self.path).query)
+        ip = qs.get("ip", [""])[0].strip()
+        token = qs.get("token", [""])[0].strip()
+        if not ip or not token:
+            self._send_json_error(400, "Missing ip or token")
+            return
+
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length)
+        try:
+            data = json.loads(body.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            self._send_json_error(400, f"Invalid JSON: {e}")
+            return
+
+        template_id = data.get("template_model_id", "")
+        clones = data.get("clones", [])
+        if not template_id or not clones:
+            self._send_json_error(400, "Missing template_model_id or clones")
+            return
+
+        # Fetch transformations to resolve schema names → IDs
+        try:
+            tf_payload = self._dt_graphql(ip, token,
+                "query ListTransformations($input: ListTransformationRequest!) {"
+                "  ListTransformations(input: $input) { ID Name } }",
+                {"input": {"ModelID": template_id}})
+            transforms = tf_payload.get("data", {}).get("ListTransformations", [])
+            schema_name_to_id = {t["Name"].lower(): t["ID"] for t in transforms if t.get("Name")}
+        except Exception:
+            schema_name_to_id = {}
+
+        results = []
+        for clone in clones:
+            clone_name = clone.get("name", "").strip()
+            attributes = clone.get("attributes", [])
+            if not clone_name:
+                results.append({"name": clone_name or "(unnamed)", "ok": False, "message": "Clone name is required"})
+                continue
+
+            # Step 1: Clone the template model
+            try:
+                clone_resp = self._dt_graphql(ip, token,
+                    "mutation CloneModel($input: CloneModelRequest!) {"
+                    "  CloneModel(input: $input) { ID Assets Name Description } }",
+                    {"input": {"ID": template_id, "Name": clone_name}})
+                clone_data = clone_resp.get("data", {}).get("CloneModel")
+                if not clone_data or not clone_data.get("ID"):
+                    errors = clone_resp.get("errors", [{}])
+                    msg = errors[0].get("message", "Unknown error") if errors else "No ID returned"
+                    results.append({"name": clone_name, "ok": False, "message": f"Clone failed: {msg}"})
+                    continue
+                new_model_id = clone_data["ID"]
+            except Exception as e:
+                results.append({"name": clone_name, "ok": False, "message": f"Clone failed: {e}"})
+                continue
+
+            # Step 2: Fetch cloned model's transformations to get schema IDs
+            try:
+                tf2 = self._dt_graphql(ip, token,
+                    "query ListTransformations($input: ListTransformationRequest!) {"
+                    "  ListTransformations(input: $input) { ID Name } }",
+                    {"input": {"ModelID": new_model_id}})
+                new_transforms = tf2.get("data", {}).get("ListTransformations", [])
+                new_schema_map = {t["Name"].lower(): t["ID"] for t in new_transforms if t.get("Name")}
+            except Exception:
+                new_schema_map = {}
+
+            # Step 3: Create dynamic attributes
+            created_attrs = []  # list of {name, id, hierarchy_path}
+            attr_errors = []
+            for attr in attributes:
+                attr_name = attr.get("Name", "").strip()
+                if not attr_name:
+                    continue
+                # Resolve SchemaID: try by name first, then by UUID
+                schema_val = attr.get("SchemaID", "").strip()
+                schema_id = ""
+                if schema_val:
+                    schema_id = new_schema_map.get(schema_val.lower(), "")
+                    if not schema_id:
+                        # Try as direct UUID
+                        schema_id = schema_val if len(schema_val) > 30 else ""
+
+                # DataType must be lowercase for the AttrDataType enum
+                data_type_raw = attr.get("DataType", "json").strip()
+                data_type_lower = data_type_raw.lower() if data_type_raw else "json"
+
+                create_vars = {
+                    "input": {
+                        "ModelID": new_model_id,
+                        "Name": attr_name,
+                        "Unit": attr.get("Unit", ""),
+                        "DataType": data_type_lower,
+                        "SchemaID": schema_id,
+                        "Topic": "",
+                        "TopicExpression": attr.get("TopicExpression", "")
+                    }
+                }
+                try:
+                    ca_resp = self._dt_graphql(ip, token,
+                        "mutation CreateDynamicAttribute($input: CreateDynamicAttributeRequest!) {"
+                        "  CreateDynamicAttribute(input: $input) { ID ModelID Name } }",
+                        create_vars)
+                    ca_data = ca_resp.get("data", {}).get("CreateDynamicAttribute")
+                    if ca_data and ca_data.get("ID"):
+                        created_attrs.append({
+                            "id": ca_data["ID"],
+                            "name": attr_name,
+                            "hierarchy": attr.get("Hierarchy", "").strip()
+                        })
+                    else:
+                        errors = ca_resp.get("errors", [{}])
+                        msg = errors[0].get("message", "Unknown") if errors else "No ID"
+                        attr_errors.append(f"{attr_name}: {msg}")
+                except Exception as e:
+                    attr_errors.append(f"{attr_name}: {e}")
+
+            # Step 4: Fetch existing hierarchy of cloned model
+            try:
+                h_resp = self._dt_graphql(ip, token,
+                    "query GetHierarchy($input: GetHierarchyRequest!) {"
+                    "  GetHierarchy(input: $input) }",
+                    {"input": {"ModelID": new_model_id}})
+                hierarchy = h_resp.get("data", {}).get("GetHierarchy", {})
+            except Exception:
+                hierarchy = {}
+
+            # Step 5: Convert GetHierarchy format to SaveAllHierarchy format
+            def convert_hier_node(src):
+                """Convert {Name, Node:{...}, Attr, Childs} → {Node:{Position,Name,IsFolder,AttributeID,AttributeType,NodeType}, Childs:[...]}"""
+                node_data = src.get("Node") or {}
+                is_folder = node_data.get("IsFolder", False)
+                attr_id = node_data.get("AttributeID")
+                # Null-UUID means no attribute
+                if attr_id and attr_id == "00000000-0000-0000-0000-000000000000":
+                    attr_id = None
+                result = {
+                    "Node": {
+                        "Position": node_data.get("Position", 0),
+                        "Name": node_data.get("Name") or src.get("Name", ""),
+                        "IsFolder": is_folder,
+                        "AttributeID": attr_id,
+                        "AttributeType": node_data.get("AttributeType"),
+                        "NodeType": node_data.get("NodeType", "array" if is_folder else "attribute")
+                    },
+                    "Childs": []
+                }
+                for child in src.get("Childs", []):
+                    result["Childs"].append(convert_hier_node(child))
+                return result
+
+            hier_input = []
+            if isinstance(hierarchy, dict) and hierarchy.get("Childs"):
+                for child in hierarchy["Childs"]:
+                    hier_input.append(convert_hier_node(child))
+
+            # Insert new dynamic attrs into hierarchy
+            def find_or_create_folder(node_list, path_parts):
+                """Navigate/create folder path and return the target Childs list."""
+                current = node_list
+                for part in path_parts:
+                    if not part or part.lower() == "root":
+                        continue
+                    found = None
+                    for child in current:
+                        n = child.get("Node", {})
+                        if n.get("Name", "").lower() == part.lower() and n.get("IsFolder", False):
+                            found = child
+                            break
+                    if found is None:
+                        new_folder = {
+                            "Node": {
+                                "Position": len(current),
+                                "Name": part,
+                                "IsFolder": True,
+                                "AttributeID": None,
+                                "AttributeType": None,
+                                "NodeType": "array"
+                            },
+                            "Childs": []
+                        }
+                        current.append(new_folder)
+                        found = new_folder
+                    current = found["Childs"]
+                return current
+
+            for ca in created_attrs:
+                path = ca["hierarchy"]
+                path_parts = [p.strip() for p in path.replace("\\", "/").split("/") if p.strip()] if path else []
+                target = find_or_create_folder(hier_input, path_parts)
+                target.append({
+                    "Node": {
+                        "Position": len(target),
+                        "Name": ca["name"],
+                        "IsFolder": False,
+                        "AttributeID": ca["id"],
+                        "AttributeType": "dynamic",
+                        "NodeType": "attribute"
+                    },
+                    "Childs": []
+                })
+
+            # Step 6: Save hierarchy
+            hier_msg = ""
+            if hier_input:
+                try:
+                    save_resp = self._dt_graphql(ip, token,
+                        "mutation SaveAllHierarchy($modelId: UUID!, $input: [SaveAllHierarchyRequest]!) {"
+                        "  SaveAllHierarchy(modelId: $modelId, input: $input) }",
+                        {"modelId": new_model_id, "input": hier_input})
+                    if save_resp.get("errors"):
+                        hier_msg = "; Hierarchy warning: " + save_resp["errors"][0].get("message", "")
+                except Exception as e:
+                    hier_msg = f"; Hierarchy save failed: {e}"
+
+            # Build result message
+            msg = f"Created with {len(created_attrs)} new attribute(s)"
+            if attr_errors:
+                msg += f", {len(attr_errors)} failed"
+            msg += hier_msg
+            results.append({"name": clone_name, "ok": len(attr_errors) == 0, "message": msg})
+
+        self._send_json_resp({"results": results})
+
     def _handle_le_push(self):
         """Process mapping tabs and POST each instance to Litmus Edge."""
         content_type = self.headers.get("Content-Type", "")
@@ -2118,6 +2717,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/api/push":
             self._handle_le_push()
+            return
+        if self.path.startswith("/api/dt/push-clones"):
+            self._handle_dt_push_clones()
             return
         if self.path != "/update":
             self.send_response(404)
