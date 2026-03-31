@@ -288,7 +288,7 @@ HTML = """<!DOCTYPE html>
   }
   .dt-tab-btn:hover { color: var(--text); }
   .dt-tab-btn.active { color: var(--green); border-bottom-color: var(--green); }
-  .dt-tab-content { display: none; padding: 14px; }
+  .dt-tab-content { display: none; padding: 14px; max-height: 420px; overflow-y: auto; }
   .dt-tab-content.active { display: block; }
   .dt-preview-status {
     font-family: var(--mono); font-size: 11px; color: var(--muted);
@@ -326,6 +326,50 @@ HTML = """<!DOCTYPE html>
   .dt-tree-attr-static { color: var(--muted); }
   .dt-tree-attr-dynamic { color: var(--green); }
   .dt-tree-icon { font-size: 11px; width: 14px; text-align: center; }
+
+  /* Raw JSON modal */
+  .dt-raw-btn {
+    background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+    color: var(--muted); font-family: var(--mono); font-size: 10px;
+    padding: 4px 10px; border-radius: 4px; cursor: pointer; transition: all 0.15s;
+  }
+  .dt-raw-btn:hover { color: var(--text); background: rgba(255,255,255,0.1); }
+  .dt-raw-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    z-index: 1000; justify-content: center; align-items: center;
+  }
+  .dt-raw-overlay.open { display: flex; }
+  .dt-raw-modal {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    width: 700px; max-width: 90vw; max-height: 75vh; display: flex; flex-direction: column;
+  }
+  .dt-raw-modal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+  }
+  .dt-raw-modal-header h3 { margin: 0; font-size: 13px; color: var(--text); }
+  .dt-raw-close {
+    background: none; border: none; color: var(--muted); font-size: 18px;
+    cursor: pointer; padding: 0 4px; line-height: 1;
+  }
+  .dt-raw-close:hover { color: var(--red); }
+  .dt-raw-tabs {
+    display: flex; gap: 0; border-bottom: 1px solid var(--border); padding: 0 16px;
+  }
+  .dt-raw-tab {
+    background: none; border: none; border-bottom: 2px solid transparent;
+    color: var(--muted); font-family: var(--mono); font-size: 10px;
+    padding: 7px 12px; cursor: pointer; transition: color 0.15s;
+  }
+  .dt-raw-tab:hover { color: var(--text); }
+  .dt-raw-tab.active { color: var(--green); border-bottom-color: var(--green); }
+  .dt-raw-body {
+    flex: 1; overflow-y: auto; padding: 14px 16px;
+  }
+  .dt-raw-body pre {
+    margin: 0; font-family: var(--mono); font-size: 11px; color: var(--text);
+    white-space: pre-wrap; word-break: break-all; line-height: 1.5;
+  }
 
   /* Ping row inside top panel */
   .ping-separator { width: 1px; height: 26px; background: var(--border); margin: 0 4px; }
@@ -829,10 +873,11 @@ HTML = """<!DOCTYPE html>
       <div class="card" id="dtPreviewCard" style="display:none">
         <div class="card-header">
           <div class="card-icon icon-json" style="background:rgba(62,207,142,0.12)">&#x1f50d;</div>
-          <div>
+          <div style="flex:1">
             <div class="card-title">Model Preview</div>
             <div class="card-desc" id="dtPreviewDesc">Inspect the selected template model configuration</div>
           </div>
+          <button type="button" class="dt-raw-btn" id="dtRawBtn" title="View raw API responses">{ } Raw JSON</button>
         </div>
         <div class="dt-preview-tabs">
           <button type="button" class="dt-tab-btn active" data-dtab="static">Static Attributes</button>
@@ -861,6 +906,25 @@ HTML = """<!DOCTYPE html>
       </div>
     </div>
     <!-- /pane-dtwin -->
+
+    <!-- Raw JSON Modal -->
+    <div class="dt-raw-overlay" id="dtRawOverlay">
+      <div class="dt-raw-modal">
+        <div class="dt-raw-modal-header">
+          <h3>Raw API Responses</h3>
+          <button type="button" class="dt-raw-close" id="dtRawClose">&times;</button>
+        </div>
+        <div class="dt-raw-tabs" id="dtRawTabs">
+          <button type="button" class="dt-raw-tab active" data-raw="static">Static Attributes</button>
+          <button type="button" class="dt-raw-tab" data-raw="dynamic">Dynamic Attributes</button>
+          <button type="button" class="dt-raw-tab" data-raw="hierarchy">Hierarchy</button>
+          <button type="button" class="dt-raw-tab" data-raw="transformations">Transformations</button>
+        </div>
+        <div class="dt-raw-body">
+          <pre id="dtRawContent"></pre>
+        </div>
+      </div>
+    </div>
 
   </div>
   <!-- /bottom-panel -->
@@ -1381,6 +1445,30 @@ HTML = """<!DOCTYPE html>
     return 'ip=' + encodeURIComponent(ip) + '&token=' + encodeURIComponent(token);
   }
 
+  // ── Raw JSON modal ──
+  document.getElementById('dtRawBtn').addEventListener('click', function() {
+    if (!window._dtRawData) return;
+    showRawTab('static');
+    document.getElementById('dtRawOverlay').classList.add('open');
+  });
+  document.getElementById('dtRawClose').addEventListener('click', function() {
+    document.getElementById('dtRawOverlay').classList.remove('open');
+  });
+  document.getElementById('dtRawOverlay').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('open');
+  });
+  document.querySelectorAll('.dt-raw-tab').forEach(btn => {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.dt-raw-tab').forEach(b => b.classList.remove('active'));
+      this.classList.add('active');
+      showRawTab(this.dataset.raw);
+    });
+  });
+  function showRawTab(key) {
+    var data = window._dtRawData ? window._dtRawData[key] : null;
+    document.getElementById('dtRawContent').textContent = data ? JSON.stringify(data, null, 2) : 'No data';
+  }
+
   function fetchDtPreview(modelId) {
     const status = document.getElementById('dtPreviewStatus');
     status.textContent = 'Loading model data\u2026';
@@ -1402,6 +1490,12 @@ HTML = """<!DOCTYPE html>
       fetch('/api/dt/hierarchy?' + base).then(r => r.ok ? r.json() : {}),
       fetch('/api/dt/transformations?' + base).then(r => r.ok ? r.json() : [])
     ]).then(([staticAttrs, dynamicAttrs, hierarchy, transformations]) => {
+      window._dtRawData = {
+        static: staticAttrs,
+        dynamic: dynamicAttrs,
+        hierarchy: hierarchy,
+        transformations: transformations
+      };
       renderDtStaticAttrs(staticAttrs);
       renderDtDynamicAttrs(dynamicAttrs, transformations);
       renderDtHierarchy(hierarchy);
