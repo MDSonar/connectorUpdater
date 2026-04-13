@@ -1767,6 +1767,10 @@ HTML = """<!DOCTYPE html>
 
   // Wire initial tab 0 listeners
   (function() {
+    var btn0 = document.querySelector('.dtc-tab-btn[data-dtctab="0"]');
+    if (btn0) {
+      btn0.addEventListener('click', function() { dtcActivateTab('0'); });
+    }
     var pane0 = document.querySelector('.dtc-pane[data-dtctab="0"]');
     if (pane0) {
       pane0.querySelector('.dtc-paste-area').addEventListener('input', function() { dtcUpdatePreview(pane0); });
