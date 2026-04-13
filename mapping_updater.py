@@ -753,7 +753,7 @@ HTML = """<!DOCTYPE html>
     </div>
   </nav>
 
-  <div class="sidebar-footer">v4.0.1 &nbsp;·&nbsp; localhost:8081</div>
+  <div class="sidebar-footer">v4.1.0 &nbsp;·&nbsp; localhost:8081</div>
 </aside>
 
 <!-- ═══════════════════════════════════════════════════════════════════════
